@@ -156,3 +156,5 @@ CLAUDE.local.md
 
 /logs
 /.clojure-mcp
+
+.tsbuildinfo
