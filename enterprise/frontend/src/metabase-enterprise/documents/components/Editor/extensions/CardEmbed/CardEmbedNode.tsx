@@ -12,7 +12,16 @@ import { QuestionPickerModal } from "metabase/common/components/Pickers/Question
 import type { QuestionPickerValueItem } from "metabase/common/components/Pickers/QuestionPicker/types";
 import { useDispatch, useSelector } from "metabase/lib/redux";
 import { getMetadata } from "metabase/selectors/metadata";
-import { Box, Flex, Icon, Loader, Menu, Text, TextInput } from "metabase/ui";
+import {
+  Box,
+  Button,
+  Flex,
+  Icon,
+  Loader,
+  Menu,
+  Text,
+  TextInput,
+} from "metabase/ui";
 import Visualization from "metabase/visualizations/components/Visualization";
 import { ErrorView } from "metabase/visualizations/components/Visualization/ErrorView/ErrorView";
 import ChartSkeleton from "metabase/visualizations/components/skeletons/ChartSkeleton";
@@ -119,7 +128,14 @@ export const CardEmbed: Node<{
 });
 
 export const CardEmbedComponent = memo(
-  ({ node, updateAttributes, selected, editor, getPos }: NodeViewProps) => {
+  ({
+    node,
+    updateAttributes,
+    selected,
+    editor,
+    getPos,
+    deleteNode,
+  }: NodeViewProps) => {
     const { id, name } = node.attrs;
     const dispatch = useDispatch();
     const canWrite = editor.options.editable;
@@ -274,7 +290,11 @@ export const CardEmbedComponent = memo(
 
     if (isLoading && !card) {
       return (
-        <NodeViewWrapper className={styles.embedWrapper}>
+        <NodeViewWrapper
+          className={styles.embedWrapper}
+          draggable="true"
+          data-drag-handle=""
+        >
           <Box
             className={cx(styles.cardEmbed, EDITOR_STYLE_BOUNDARY_CLASS, {
               [styles.selected]: selected,
@@ -304,6 +324,8 @@ export const CardEmbedComponent = memo(
         <NodeViewWrapper
           className={styles.embedWrapper}
           data-testid="document-card-embed"
+          draggable="true"
+          data-drag-handle=""
         >
           <Box
             className={cx(styles.cardEmbed, EDITOR_STYLE_BOUNDARY_CLASS, {
@@ -328,12 +350,33 @@ export const CardEmbedComponent = memo(
       <NodeViewWrapper
         className={styles.embedWrapper}
         data-testid="document-card-embed"
+        draggable="true"
+        data-drag-handle=""
       >
         <Box
+          pos="relative"
           className={cx(styles.cardEmbed, EDITOR_STYLE_BOUNDARY_CLASS, {
             [styles.selected]: selected,
           })}
         >
+          <div style={{ position: "absolute", right: "100%" }}>
+            <Button
+              onClick={() => {
+                deleteNode();
+                editor
+                  .chain()
+                  .focus()
+                  .insertTable({ rows: 1, cols: 2, withHeaderRow: false })
+                  .goToNextCell()
+                  .insertContent(node)
+                  .goToPreviousCell()
+                  .focus()
+                  .run();
+              }}
+            >
+              <Icon name="add" />
+            </Button>
+          </div>
           {card && (
             <Box className={styles.questionHeader}>
               <Flex align="center" justify="space-between" gap="0.5rem">

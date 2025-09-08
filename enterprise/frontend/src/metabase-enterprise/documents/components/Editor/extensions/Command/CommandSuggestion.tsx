@@ -149,6 +149,11 @@ export const CommandSuggestion = forwardRef<
             label: t`Link`,
             command: "linkTo",
           },
+          {
+            icon: "table2",
+            label: t`Table`,
+            command: "insertTable",
+          },
         ],
       },
       {

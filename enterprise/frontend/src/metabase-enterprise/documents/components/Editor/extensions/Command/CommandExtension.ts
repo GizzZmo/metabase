@@ -116,6 +116,16 @@ export const CommandExtension = Extension.create<CommandOptions>({
             return;
           }
 
+          if (props.command === "insertTable") {
+            editor
+              .chain()
+              .focus()
+              .deleteRange(range)
+              .insertTable({ rows: 1, cols: 2, withHeaderRow: false })
+              .run();
+            return;
+          }
+
           switch (props.command) {
             case "heading1":
               editor

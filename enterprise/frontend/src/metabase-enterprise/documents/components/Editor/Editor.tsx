@@ -1,6 +1,7 @@
 import Image from "@tiptap/extension-image";
 import Link from "@tiptap/extension-link";
 import { Placeholder } from "@tiptap/extension-placeholder";
+import { TableKit } from "@tiptap/extension-table";
 import type { EditorState } from "@tiptap/pm/state";
 import type { JSONContent, Editor as TiptapEditor } from "@tiptap/react";
 import { EditorContent, useEditor } from "@tiptap/react";
@@ -117,6 +118,9 @@ export const Editor: React.FC<EditorProps> = ({
         placeholder: t`Start writing, press "/" to open command palette, or "@" to insert a link...`,
       }),
       CardEmbed,
+      TableKit.configure({
+        table: { resizable: true },
+      }),
       MentionExtension.configure({
         suggestion: {
           allow: ({ state }) => !isMetabotBlock(state),
