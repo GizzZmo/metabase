@@ -4,12 +4,11 @@
    [metabase.lib.schema :as lib.schema]
    [metabase.lib.schema.common :as lib.schema.common]
    [metabase.lib.schema.id :as lib.schema.id]
+   [metabase.lib.schema.template-tag :as lib.schema.template-tag]
+   [metabase.lib.util :as lib.util]
    [metabase.lib.util.match :as lib.util.match]
    [metabase.lib.walk :as lib.walk]
-   [metabase.util.malli :as mu]
-   [metabase.lib.schema.parameter :as lib.schema.parameter]
-   [metabase.lib.schema.template-tag :as lib.schema.template-tag]
-   [metabase.lib.util :as lib.util]))
+   [metabase.util.malli :as mu]))
 
 (defn- transduce-stages
   ([query rf]
@@ -46,7 +45,9 @@
   [query :- ::lib.schema/query]
   (stage-values-set query (comp (filter (fn [stage]
                                           (= (:lib/type stage) :mbql.stage/native)))
-                                (mapcat #(vals (:template-tags %))))))
+                                (mapcat :template-tags)
+                                (map (fn [[template-tag-name template-tag]]
+                                       (assoc template-tag :lib.walk/template-tag-name template-tag-name))))))
 
 (mu/defn- collect-field-ids :- [:maybe [:set {:min 1} ::lib.schema.id/field]]
   "Walk `clause` and collect all Field IDS in `:field` clauses."
