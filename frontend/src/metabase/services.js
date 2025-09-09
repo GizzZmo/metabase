@@ -100,7 +100,7 @@ export async function runQuestionQuery(
   const card = question.card();
 
   if (canUseCardApiEndpoint) {
-    const { dashboardId, dashcardId } = card;
+    const { dashboardId, dashcardId } = question.getDashboardProps();
 
     const queryParams = {
       cardId: question.id(),
