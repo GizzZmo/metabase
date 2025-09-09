@@ -39,6 +39,7 @@
    [metabase.revisions.models.revision :as revision]
    [metabase.test :as mt]
    [metabase.test.data.users :as test.users]
+   [metabase.test.fixtures :as fixtures]
    [metabase.test.http-client :as client]
    [metabase.test.util :as tu]
    [metabase.util :as u]
@@ -51,7 +52,7 @@
 
 (set! *warn-on-reflection* true)
 
-(comment api.card/keep-me)
+(use-fixtures :once (fixtures/initialize :db :web-server))
 
 ;;; +----------------------------------------------------------------------------------------------------------------+
 ;;; |                                              Helper Fns & Macros                                               |
