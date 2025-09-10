@@ -48,7 +48,7 @@ export function ListView({
   const { titleColumn, subtitleColumn, imageColumn, rightColumns } =
     useListColumns(cols, settings?.["list.columns"]);
 
-  const openObjectDetail = useObjectDetail(data);
+  const openObjectDetail = useObjectDetail();
 
   // Get the appropriate icon based on entity type
   const entityIcon =
