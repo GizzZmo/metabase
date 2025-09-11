@@ -257,8 +257,6 @@ describe("admin > database > add", () => {
       () => {
         // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
         cy.contains("MongoDB").click({ force: true });
-        // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
-        cy.contains("Additional connection string options");
 
         H.typeAndBlurUsingLabel("Display name", "QA Mongo");
         H.typeAndBlurUsingLabel("Host", "localhost");
@@ -269,6 +267,9 @@ describe("admin > database > add", () => {
         H.typeAndBlurUsingLabel("Authentication database (optional)", "admin");
 
         cy.findByLabelText("Advanced options").click();
+        cy.findByLabelText(
+          "Additional connection string options (optional)",
+        ).should("be.visible");
 
         // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
         cy.findByText("Save").should("not.be.disabled").click();
