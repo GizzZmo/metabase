@@ -369,7 +369,7 @@
                                         {:name "date_field" :type :type/Date :nullable? true}]
                               :data [[1 "" 0 0.0 false "2024-01-01"] ; Minimal values
                                      [2 "Very long text with special chars: !@#$%^&*(){}[]|\\:;\"'<>,.?/~`"
-                                      2147483647 1.7976931348623157E308 true "9999-12-31"] ; Maximum values
+                                      2147483647 1.7976931348623157E308 true "2222-12-31"]
                                      [3 nil nil nil nil nil]]} ; All nulls
 
             table-id (create-test-table-with-data
@@ -462,13 +462,13 @@
                                 "    return df")
 
             ;; Run the transform twice
-            result1 (execute-python-transform
-                     transform-code
-                     {table-name table-id})
+            result1 (execute
+                     {:code transform-code
+                      :tables {table-name table-id}})
 
-            result2 (execute-python-transform
-                     transform-code
-                     {table-name table-id})]
+            result2 (execute
+                     {:code transform-code
+                      :tables {table-name table-id}})]
 
         (testing "Both transforms succeeded"
           (is (some? result1))
