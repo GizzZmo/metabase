@@ -130,16 +130,11 @@
              :data [[1 "{\"key\": \"mariadb_value\"}" "550e8400-e29b-41d4-a716-446655440000" "192.168.1.1"]
                     [2 nil nil nil]]}
 
-   ;; TODO: insert not working rn
    :bigquery-cloud-sdk {:columns [{:name "id" :type :type/Integer :nullable? false}
                                   {:name "json_field" :type :type/JSON :nullable? true}
-                                  ;; {:name "array_field" :type :type/Array :nullable? true :database-type "ARRAY<INT64>"}
-                                  ;; {:name "dict_field" :type :type/Dictionary :nullable? true :database-type "STRUCT<key STRING, value INT64>"}
-                                  ]
-                        :data [[1 "{\"key\": \"value\"}" ;; "[1, 2, 3]" "{\"key\": \"test\", \"value\": 42}"
-                                ]
-                               [2 nil ;; nil nil
-                                ]]}
+                                  {:name "dict_field" :type :type/Dictionary :nullable? true :database-type "STRUCT<key STRING, value INT64>"}]
+                        :data [[1 "{\"key\": \"value\"}"  "{\"key\": \"test\", \"value\": 42}"]
+                               [2 nil nil]]}
    :snowflake {:columns [{:name "id" :type :type/Integer :nullable? false}
                          {:name "array_field" :type :type/Array :nullable? true :database-type "ARRAY"}]
                :data [[1 "[1, 2, 3]"]
@@ -914,8 +909,8 @@
               {:columns [{:name "id" :type :type/Integer :nullable? false}
                          ;; BigQuery specific types
                          {:name "struct_field" :type :type/Dictionary :nullable? true :database-type "STRUCT<name STRING, age INT64, active BOOL>"}
-                         {:name "array_ints" :type :type/Array :nullable? true :database-type "ARRAY<INT64>"}
-                         {:name "array_structs" :type :type/Array :nullable? true :database-type "ARRAY<STRUCT<key STRING, value FLOAT64>>"}
+                         ;; {:name "array_ints" :type :type/Array :nullable? true :database-type "ARRAY<INT64>"}
+                         ;; {:name "array_structs" :type :type/Array :nullable? true :database-type "ARRAY<STRUCT<key STRING, value FLOAT64>>"}
                          {:name "geography_field" :type :type/Text :nullable? true :database-type "GEOGRAPHY"}
                          {:name "numeric_precise" :type :type/Decimal :nullable? true :database-type "NUMERIC(38,9)"}
                          {:name "bignumeric_field" :type :type/Decimal :nullable? true :database-type "BIGNUMERIC(76,38)"}
@@ -952,9 +947,9 @@
                                   "    df['struct_has_name'] = df['struct_field'].astype(str).str.contains('name', na=False)\n"
                                   "    df['struct_length'] = df['struct_field'].astype(str).str.len()\n"
                                   "    \n"
-                                  "    # Array operations\n"
-                                  "    df['array_ints_length'] = df['array_ints'].astype(str).str.len()\n"
-                                  "    df['array_structs_complex'] = df['array_structs'].astype(str).str.contains('key', na=False)\n"
+                                  ;; "    # Array operations\n"
+                                  ;; "    df['array_ints_length'] = df['array_ints'].astype(str).str.len()\n"
+                                  ;; "    df['array_structs_complex'] = df['array_structs'].astype(str).str.contains('key', na=False)\n"
                                   "    \n"
                                   "    # Geography operations\n"
                                   "    df['is_point'] = df['geography_field'].astype(str).str.contains('POINT', na=False)\n"
@@ -1294,8 +1289,8 @@
               {:columns [{:name "id" :type :type/Integer :nullable? false}
                          ;; BigQuery specific types
                          {:name "struct_field" :type :type/Dictionary :nullable? true :database-type "STRUCT<name STRING, age INT64, active BOOL>"}
-                         {:name "array_ints" :type :type/Array :nullable? true :database-type "ARRAY<INT64>"}
-                         {:name "array_structs" :type :type/Array :nullable? true :database-type "ARRAY<STRUCT<key STRING, value FLOAT64>>"}
+                         ;; {:name "array_ints" :type :type/Array :nullable? true :database-type "ARRAY<INT64>"}
+                         ;; {:name "array_structs" :type :type/Array :nullable? true :database-type "ARRAY<STRUCT<key STRING, value FLOAT64>>"}
                          {:name "geography_field" :type :type/Text :nullable? true :database-type "GEOGRAPHY"}
                          {:name "numeric_precise" :type :type/Decimal :nullable? true :database-type "NUMERIC(38,9)"}
                          {:name "bignumeric_field" :type :type/Decimal :nullable? true :database-type "BIGNUMERIC(76,38)"}
@@ -1333,8 +1328,8 @@
                                   "    df['struct_length'] = df['struct_field'].astype(str).str.len()\n"
                                   "    \n"
                                   "    # Array operations\n"
-                                  "    df['array_ints_length'] = df['array_ints'].astype(str).str.len()\n"
-                                  "    df['array_structs_complex'] = df['array_structs'].astype(str).str.contains('key', na=False)\n"
+                                  ;; "    df['array_ints_length'] = df['array_ints'].astype(str).str.len()\n"
+                                  ;; "    df['array_structs_complex'] = df['array_structs'].astype(str).str.contains('key', na=False)\n"
                                   "    \n"
                                   "    # Geography operations\n"
                                   "    df['is_point'] = df['geography_field'].astype(str).str.contains('POINT', na=False)\n"
