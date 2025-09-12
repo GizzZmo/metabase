@@ -547,3 +547,210 @@
           (cleanup-table source-qualified-table-name)
           (when exotic-qualified-table-name
             (cleanup-table exotic-qualified-table-name)))))))
+
+(deftest exotic-edge-cases-python-transform-test
+  "Test Python transforms with very exotic types and edge case values that should work transparently."
+  (testing "PostgreSQL exotic edge cases"
+    (mt/test-driver :postgres
+      (mt/with-empty-db
+        (let [table-name "postgres_exotic_edge_cases"
+              exotic-edge-schema
+              {:columns [{:name "id" :type :type/Integer :nullable? false}
+                         ;; Network types
+                         {:name "inet_field" :type :type/IPAddress :nullable? true}
+                         {:name "cidr_field" :type :type/IPAddress :nullable? true :database-type "cidr"}
+                         {:name "macaddr_field" :type :type/Text :nullable? true :database-type "macaddr"}
+                         ;; Advanced numeric types
+                         {:name "money_field" :type :type/Decimal :nullable? true :database-type "money"}
+                         {:name "real_field" :type :type/Float :nullable? true :database-type "real"}
+                         ;; Binary data
+                         {:name "bytea_field" :type :type/Text :nullable? true :database-type "bytea"}
+                         ;; Time types
+                         {:name "time_field" :type :type/Time :nullable? true}
+                         {:name "interval_field" :type :type/Text :nullable? true :database-type "interval"}
+                         ;; Arrays of different types
+                         {:name "int_array" :type :type/Array :nullable? true :database-type "integer[]"}
+                         {:name "text_array" :type :type/Array :nullable? true :database-type "text[]"}
+                         ;; Geometric types
+                         {:name "point_field" :type :type/Text :nullable? true :database-type "point"}
+                         ;; Large precision decimals
+                         {:name "big_decimal" :type :type/Decimal :nullable? true :database-type "decimal(20,10)"}]
+               :data [[1 "192.168.1.100" "192.168.0.0/16" "aa:bb:cc:dd:ee:ff"
+                       1234.56 3.14159 "\\xDEADBEEF" "14:30:45.123" "1 year 2 months"
+                       "{1,2,3,4,5}" "{\"hello\",\"world\",\"test\"}" "(45.5,-122.6)" 123456789.1234567890]
+                      [2 "::1" "2001:db8::/32" "ff:ff:ff:ff:ff:ff"
+                       -999999.99 -3.4E+38 "\\x01FF00FF" "23:59:59.999999" "999 days 23 hours"
+                       "{-2147483648,0,2147483647}" "{\"unicode: 你好\",\"emoji: 🎉\"}" "(-180,-90)" -987654321.0987654321]
+                      [3 "10.0.0.1" "10.0.0.0/8" "00:00:00:00:00:00"
+                       0.01 1.234567E-38 "\\x" "00:00:00.000001" "1 microsecond"
+                       "{}" "{}" "(0.000001,0.000001)" 0.0000000001]
+                      [4 nil nil nil nil nil nil nil nil nil nil nil nil]]}
+
+              qualified-table-name (create-test-table-with-data
+                                    table-name
+                                    exotic-edge-schema
+                                    (:data exotic-edge-schema))
+
+              ;; Transform that tests exotic type handling
+              transform-code (str "import pandas as pd\n"
+                                  "import numpy as np\n"
+                                  "\n"
+                                  "def transform(" table-name "):\n"
+                                  "    df = " table-name ".copy()\n"
+                                  "    \n"
+                                  "    # Test IP address operations\n"
+                                  "    df['has_ipv6'] = df['inet_field'].astype(str).str.contains(':', na=False)\n"
+                                  "    df['is_private'] = df['inet_field'].astype(str).str.startswith('192.168', na=False)\n"
+                                  "    \n"
+                                  "    # Test MAC address operations\n"
+                                  "    df['mac_normalized'] = df['macaddr_field'].astype(str).str.replace(':', '', regex=False)\n"
+                                  "    \n"
+                                  "    # Test money operations\n"
+                                  "    df['money_doubled'] = df['money_field'] * 2\n"
+                                  "    df['is_expensive'] = df['money_field'] > 1000\n"
+                                  "    \n"
+                                  "    # Test array operations\n"
+                                  "    df['array_length'] = df['text_array'].astype(str).str.len()\n"
+                                  "    df['has_numbers'] = df['int_array'].astype(str).str.contains('[0-9]', na=False)\n"
+                                  "    \n"
+                                  "    # Test geometric operations\n"
+                                  "    df['has_coords'] = df['point_field'].astype(str).str.contains(',', na=False)\n"
+                                  "    \n"
+                                  "    # Test large decimal operations\n"
+                                  "    df['big_decimal_rounded'] = df['big_decimal'].round(2)\n"
+                                  "    \n"
+                                  "    return df")
+
+              result (execute {:code transform-code
+                               :tables {table-name (mt/id qualified-table-name)}})]
+
+          (testing "PostgreSQL exotic transform succeeded"
+            (is (some? result) "Transform should succeed")
+            (is (contains? result :output) "Should have output")
+            (is (contains? result :output-manifest) "Should have output manifest"))
+
+          (when result
+            (let [csv-data (csv/read-csv (:output result))
+                  headers (first csv-data)
+                  rows (rest csv-data)
+                  metadata (:output-manifest result)]
+
+              (testing "Exotic data processed correctly"
+                (is (= 4 (count rows)) "Should have 4 rows")
+                (is (> (count headers) 13) "Should have computed columns")
+
+                ;; Check some computed columns exist
+                (is (contains? (set headers) "has_ipv6") "Should have IPv6 detection")
+                (is (contains? (set headers) "money_doubled") "Should have money calculations")
+                (is (contains? (set headers) "has_coords") "Should have geometric operations"))
+
+              (testing "Type preservation for exotic types"
+                (let [dtype-map (u/for-map [{:keys [name dtype]} (:fields metadata)]
+                                  [name (transforms.util/dtype->base-type dtype)])]
+                  ;; Original exotic types should be preserved as text or appropriate types
+                  (is (contains? #{:type/Text :type/IPAddress} (dtype-map "inet_field")))
+                  (is (contains? #{:type/Decimal :type/Float} (dtype-map "money_field")))
+                  (is (contains? #{:type/Text :type/Array} (dtype-map "int_array")))
+                  ;; Computed columns should have expected types
+                  (is (= :type/Boolean (dtype-map "has_ipv6")))
+                  (is (contains? #{:type/Decimal :type/Float} (dtype-map "money_doubled")))))))
+
+          ;; Cleanup
+          (cleanup-table qualified-table-name))))))
+
+(deftest large-values-python-transform-test
+  "Test Python transforms with large-ish values that should work within 63-bit limits."
+  (mt/test-drivers #{:h2 :postgres :mysql :snowflake}
+    (mt/with-empty-db
+      (let [table-name "large_values_test"
+            large-values-schema
+            {:columns [{:name "id" :type :type/Integer :nullable? false}
+                       {:name "big_int" :type :type/Integer :nullable? true}
+                       {:name "big_decimal" :type :type/Decimal :nullable? true}
+                       {:name "very_long_text" :type :type/Text :nullable? true}
+                       {:name "precision_float" :type :type/Float :nullable? true}
+                       {:name "timestamp_precise" :type :type/DateTime :nullable? true}]
+             :data [[1 4611686018427387903 ; ~2^62 (within 63-bit limit)
+                     12345678901234567.890123456 ; Large decimal with precision
+                     (apply str (repeat 10000 "A")) ; 10K character string
+                     1.23456789012345E14 ; Large float with precision
+                     "2024-12-31 23:59:59.999999"]
+                    [2 -4611686018427387903 ; Large negative
+                     -9876543210987654.321098765 ; Large negative decimal
+                     (str "Unicode mix: 你好世界 " (apply str (repeat 1000 "🎉"))) ; Mixed unicode
+                     2.98792458E-39 ; Very small positive
+                     "1900-01-01 00:00:00.000001"]
+                    [3 0 ; Boundary cases
+                     0.000000000001 ; Very small decimal
+                     "" ; Empty string
+                     0.0 ; Zero float
+                     "2000-01-01 12:00:00"]
+                    [4 nil nil nil nil nil]]} ; All nulls
+
+            qualified-table-name (create-test-table-with-data
+                                  table-name
+                                  large-values-schema
+                                  (:data large-values-schema))
+
+            ;; Transform that processes large values
+            transform-code (str "import pandas as pd\n"
+                                "import numpy as np\n"
+                                "\n"
+                                "def transform(" table-name "):\n"
+                                "    df = " table-name ".copy()\n"
+                                "    \n"
+                                "    # Large integer operations\n"
+                                "    df['big_int_safe'] = df['big_int'].fillna(0) // 1000000  # Scale down safely\n"
+                                "    df['is_large_positive'] = df['big_int'] > 1000000000\n"
+                                "    \n"
+                                "    # Decimal operations\n"
+                                "    df['decimal_rounded'] = df['big_decimal'].round(6)\n"
+                                "    df['decimal_magnitude'] = np.abs(df['big_decimal'])\n"
+                                "    \n"
+                                "    # Text length operations on large strings\n"
+                                "    df['text_length'] = df['very_long_text'].astype(str).str.len()\n"
+                                "    df['has_unicode'] = df['very_long_text'].astype(str).str.contains('[^\\x00-\\x7F]', na=False, regex=True)\n"
+                                "    \n"
+                                "    # Float operations\n"
+                                "    df['float_log10'] = np.log10(np.abs(df['precision_float']) + 1e-100)  # Safe log\n"
+                                "    df['is_scientific'] = np.abs(df['precision_float']) > 1e10\n"
+                                "    \n"
+                                "    return df")
+
+            result (execute {:code transform-code
+                             :tables {table-name (mt/id qualified-table-name)}})]
+
+        (testing "Large values transform succeeded"
+          (is (some? result) "Transform with large values should succeed")
+          (is (contains? result :output) "Should have output"))
+
+        (when result
+          (let [csv-data (csv/read-csv (:output result))
+                headers (first csv-data)
+                rows (rest csv-data)
+                metadata (:output-manifest result)]
+
+            (testing "Large values processed correctly"
+              (is (= 4 (count rows)) "Should have 4 rows")
+              (is (> (count headers) 6) "Should have computed columns")
+
+              ;; Check computed columns exist
+              (is (contains? (set headers) "text_length") "Should calculate text length")
+              (is (contains? (set headers) "is_large_positive") "Should detect large numbers")
+              (is (contains? (set headers) "has_unicode") "Should detect unicode"))
+
+            (testing "Large value operations maintain precision"
+              (let [first-row (first rows)
+                    get-col (fn [row col-name]
+                              (nth row (.indexOf headers col-name)))]
+                ;; Text length should be very large for first row
+                (when-let [length-str (get-col first-row "text_length")]
+                  (let [length (try (Long/parseLong length-str) (catch Exception _ 0))]
+                    (is (> length 9000) "Should handle very long text correctly")))
+
+                ;; Should detect unicode in second row  
+                (let [has-unicode (get-col (second rows) "has_unicode")]
+                  (is (contains? #{"True" "true" "1"} has-unicode) "Should detect unicode characters"))))))
+
+        ;; Cleanup
+        (cleanup-table qualified-table-name)))))
