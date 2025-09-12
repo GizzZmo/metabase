@@ -13,15 +13,16 @@
    [metabase.driver :as driver]
    [metabase.sync.core :as sync]
    [metabase.test :as mt]
-   [metabase.test.data.interface :as tx]
    [metabase.test.data.sql :as sql.tx]
    [metabase.util :as u]
    [metabase.util.json :as json]
    [toucan2.core :as t2]))
 
+(set! *warn-on-reflection* true)
+
 (def test-id 42)
 
-(defn- execute
+(defn- execute!
   "Execute a Python transform with the given code and tables, following the existing test pattern."
   [{:keys [code tables]}]
   (with-open [shared-storage-ref (python-runner/open-s3-shared-storage! (or tables {}))]
@@ -47,15 +48,14 @@
 
 (defn- wait-for-table
   "Wait for a table to be created and synced, with timeout."
-  [table-name timeout-ms]
-  (let [start-time (System/currentTimeMillis)]
-    (loop []
-      (if-let [table (t2/select-one :model/Table :name table-name :db_id (mt/id))]
-        table
-        (if (< (- (System/currentTimeMillis) start-time) timeout-ms)
-          (do (Thread/sleep 100)
-              (recur))
-          (throw (ex-info "Timeout waiting for table" {:table-name table-name})))))))
+  [table-name]
+  (loop [runs 0]
+    (if-let [table (t2/select-one :model/Table :name table-name :db_id (mt/id))]
+      table
+      (if (< runs 100)
+        (do (Thread/sleep 100)
+            (recur (inc runs)))
+        (throw (ex-info "Timeout waiting for table" {:table-name table-name}))))))
 
 (defn- execute-e2e-transform!
   "Execute an e2e Python transform test using execute-python-transform!"
@@ -71,10 +71,10 @@
                                 :source-tables source-tables
                                 :body transform-code}
                        :target target}]
-    (with-transform-cleanup! [target target]
+    (with-transform-cleanup! [_target target]
       (mt/with-temp [:model/Transform transform transform-def]
         (transforms.execute/execute-python-transform! transform {:run-method :manual})
-        (wait-for-table table-name 10000)
+        (wait-for-table table-name)
         ;; Return the table rows for validation
         (transforms.tu/table-rows table-name)))))
 
@@ -148,7 +148,7 @@
            :data [[1 "550e8400-e29b-41d4-a716-446655440000" "{\"key\": \"value\"}" "[1, 2, 3]" "{\"nested\": \"object\"}" "507f1f77bcf86cd799439011"]
                   [2 nil nil nil nil nil]]}})
 
-(defn- create-test-table-with-data
+(defn- create-test-table-with-data!
   "Create a test table with the given schema and data for the current driver."
   [table-name schema data]
   (let [driver driver/*driver*
@@ -246,8 +246,8 @@
                                 "    df = " table-name ".copy()\n"
                                 "    return df")
 
-            result (execute {:code transform-code
-                             :tables {table-name table-id}})
+            result (execute! {:code transform-code
+                              :tables {table-name table-id}})
 
             expected-columns ["id" "name" "price" "active" "created_date" "created_at" "created_tz"]
 
@@ -287,8 +287,8 @@
                                   "    df = " table-name ".copy()\n"
                                   "    return df")
 
-              result (execute {:code transform-code
-                               :tables {table-name table-id}})
+              result (execute! {:code transform-code
+                                :tables {table-name table-id}})
 
               expected-columns (map :name (:columns exotic-config))
               expected-row-count (count (:data exotic-config))
@@ -397,8 +397,8 @@
                                 "    \n"
                                 "    return df")
 
-            result (execute {:code transform-code
-                             :tables {table-name table-id}})
+            result (execute! {:code transform-code
+                              :tables {table-name table-id}})
 
             expected-columns ["id" "text_field" "int_field" "float_field" "bool_field" "date_field"
                               "text_length" "int_doubled" "float_squared" "bool_inverted"]
@@ -461,11 +461,11 @@
                                 "    return df")
 
             ;; Run the transform twice
-            result1 (execute
+            result1 (execute!
                      {:code transform-code
                       :tables {table-name table-id}})
 
-            result2 (execute
+            result2 (execute!
                      {:code transform-code
                       :tables {table-name table-id}})]
 
@@ -651,8 +651,8 @@
                                   "    \n"
                                   "    return df")
 
-              result (execute {:code transform-code
-                               :tables {table-name table-id}})]
+              result (execute! {:code transform-code
+                                :tables {table-name table-id}})]
 
           (testing "PostgreSQL exotic transform succeeded"
             (is (some? result) "Transform should succeed")
@@ -743,8 +743,8 @@
                                   "    \n"
                                   "    return df")
 
-              result (execute {:code transform-code
-                               :tables {table-name table-id}})]
+              result (execute! {:code transform-code
+                                :tables {table-name table-id}})]
 
           (testing "MySQL exotic transform succeeded"
             (is (some? result) "MySQL transform should succeed"))
@@ -824,8 +824,8 @@
                                   "    \n"
                                   "    return df")
 
-              result (execute {:code transform-code
-                               :tables {table-name table-id}})]
+              result (execute! {:code transform-code
+                                :tables {table-name table-id}})]
 
           (testing "MariaDB exotic transform succeeded"
             (is (some? result) "MariaDB transform should succeed"))
@@ -901,8 +901,8 @@
                                   "    \n"
                                   "    return df")
 
-              result (execute {:code transform-code
-                               :tables {table-name table-id}})]
+              result (execute! {:code transform-code
+                                :tables {table-name table-id}})]
 
           (testing "BigQuery exotic transform succeeded"
             (is (some? result) "BigQuery transform should succeed"))
@@ -975,8 +975,8 @@
                                   "    \n"
                                   "    return df")
 
-              result (execute {:code transform-code
-                               :tables {table-name table-id}})]
+              result (execute! {:code transform-code
+                                :tables {table-name table-id}})]
 
           (testing "Snowflake exotic transform succeeded"
             (is (some? result) "Snowflake transform should succeed"))
@@ -1049,8 +1049,8 @@
                                   "    \n"
                                   "    return df")
 
-              result (execute {:code transform-code
-                               :tables {table-name table-id}})]
+              result (execute! {:code transform-code
+                                :tables {table-name table-id}})]
 
           (testing "ClickHouse exotic transform succeeded"
             (is (some? result) "ClickHouse transform should succeed"))
@@ -1124,8 +1124,8 @@
                                 "    \n"
                                 "    return df")
 
-            result (execute {:code transform-code
-                             :tables {table-name table-id}})]
+            result (execute! {:code transform-code
+                              :tables {table-name table-id}})]
 
         (testing "Large values transform succeeded"
           (is (some? result) "Transform with large values should succeed")
