@@ -34,7 +34,7 @@ export type ActionButtonHandle = {
   resetState: () => void;
 };
 
-const ActionButton = forwardRef<ActionButtonHandle, ActionButtonProps>(
+export const ActionButton = forwardRef<ActionButtonHandle, ActionButtonProps>(
   function ActionButtonInner(
     {
       normalText = t`Save`,
@@ -153,6 +153,3 @@ const ActionButton = forwardRef<ActionButtonHandle, ActionButtonProps>(
     );
   },
 );
-
-// eslint-disable-next-line import/no-default-export -- legacy usage
-export default ActionButton;
