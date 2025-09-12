@@ -211,6 +211,21 @@
        :rows rows
        :metadata metadata})))
 
+(deftest create-table-test
+  "Test Python transforms with base types across all supported drivers."
+  (mt/test-drivers #{:h2 :postgres :mysql :mariadb :bigquery-cloud-sdk :snowflake :sqlserver :redshift :clickhouse}
+    (mt/with-empty-db
+      (let [table-name "base_types_test"
+            qualified-table-name (create-test-table-with-data
+                                  table-name
+                                  base-type-test-data
+                                  (:data base-type-test-data))]
+
+        (is (mt/id qualified-table-name))
+
+        ;; Cleanup
+        (cleanup-table qualified-table-name)))))
+
 (deftest base-types-python-transform-test
   "Test Python transforms with base types across all supported drivers."
   (mt/test-drivers #{:h2 :postgres :mysql :mariadb :bigquery-cloud-sdk :snowflake :sqlserver :redshift :clickhouse}
