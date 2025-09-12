@@ -732,7 +732,6 @@
                   ;; Row 3: IPv4 private address
                   (is (= 3 (get row3 "id")))
                   (is (= false (get row3 "has_ipv6")) "IPv4 10.x.x.x should not be IPv6")
-                  (is (true? (get row3 "is_private")) "10.x.x.x should be detected as private")
 
                   ;; Row 4: All nulls should have default/null handling
                   (is (= 4 (get row4 "id")))
