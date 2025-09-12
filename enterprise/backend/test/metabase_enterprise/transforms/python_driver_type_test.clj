@@ -297,7 +297,9 @@
                                         (when (contains? dtype-map "json_field")
                                           (is (contains? #{:type/Text :type/JSON} (dtype-map "json_field"))))
                                         (when (contains? dtype-map "array_field")
-                                          (is (contains? #{:type/Text :type/Array} (dtype-map "array_field")))))
+                                          (is (contains? #{:type/Text :type/Array} (dtype-map "array_field"))))
+                                        (when (contains? dtype-map "dict_field")
+                                          (is (contains? #{:type/Text :type/Dictionary} (dtype-map "dict_field")))))
 
                   :snowflake (when (contains? dtype-map "array_field")
                                (is (contains? #{:type/Text :type/Array} (dtype-map "array_field"))))
@@ -315,6 +317,8 @@
                              (is (contains? #{:type/Text :type/JSON} (dtype-map "json_field"))))
                            (when (contains? dtype-map "array_field")
                              (is (contains? #{:type/Text :type/Array} (dtype-map "array_field"))))
+                           (when (contains? dtype-map "dict_field")
+                             (is (contains? #{:type/Text :type/Dictionary} (dtype-map "dict_field"))))
                            (when (contains? dtype-map "bson_id")
                              (is (contains? #{:type/Text :type/MongoBSONID} (dtype-map "bson_id")))))))))
 
