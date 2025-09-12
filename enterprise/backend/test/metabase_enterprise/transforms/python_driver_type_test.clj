@@ -207,7 +207,7 @@
 
 (deftest base-types-python-transform-test
   "Test Python transforms with base types across all supported drivers."
-  (mt/test-drivers #{:postgres :mysql :bigquery-cloud-sdk :snowflake :sqlserver :redshift :clickhouse}
+  (mt/test-drivers #{:h2 :postgres :mysql :bigquery-cloud-sdk :snowflake :sqlserver :redshift :clickhouse}
     (mt/with-empty-db
       (let [table-name "base_types_test"
             qualified-table-name (create-test-table-with-data
@@ -247,7 +247,7 @@
 
 (deftest exotic-types-python-transform-test
   "Test Python transforms with driver-specific exotic types."
-  (mt/test-drivers #{:postgres :mysql :bigquery-cloud-sdk :snowflake :sqlserver :redshift :clickhouse :mongo}
+  (mt/test-drivers #{:h2 :postgres :mysql :bigquery-cloud-sdk :snowflake :sqlserver :redshift :clickhouse :mongo}
     (mt/with-empty-db
       (when-let [exotic-config (get driver-exotic-types driver/*driver*)]
         (let [table-name "exotic_types_test"
@@ -327,7 +327,7 @@
 
 (deftest edge-cases-python-transform-test
   "Test Python transforms with edge cases: null values, empty strings, extreme values."
-  (mt/test-drivers #{:postgres :mysql :bigquery-cloud-sdk :snowflake :sqlserver :redshift :clickhouse}
+  (mt/test-drivers #{:h2 :postgres :mysql :bigquery-cloud-sdk :snowflake :sqlserver :redshift :clickhouse}
     (mt/with-empty-db
       (let [table-name "edge_cases_test"
             edge-case-schema {:columns [{:name "id" :type :type/Integer :nullable? false}
@@ -413,7 +413,7 @@
 
 (deftest idempotent-transform-test
   "Test that running the same transform multiple times produces identical results."
-  (mt/test-drivers #{:postgres :mysql :bigquery-cloud-sdk :snowflake :sqlserver :redshift :clickhouse}
+  (mt/test-drivers #{:h2 :postgres :mysql :bigquery-cloud-sdk :snowflake :sqlserver :redshift :clickhouse}
     (mt/with-empty-db
       (let [table-name "idempotent_test"
             qualified-table-name (create-test-table-with-data
@@ -466,7 +466,7 @@
 
 (deftest comprehensive-e2e-python-transform-test
   "End-to-end test using execute-python-transform! across all supported drivers with comprehensive type coverage."
-  (mt/test-drivers #{:postgres :mysql :bigquery-cloud-sdk :snowflake :sqlserver :redshift :clickhouse}
+  (mt/test-drivers #{:h2 :postgres :mysql :bigquery-cloud-sdk :snowflake :sqlserver :redshift :clickhouse}
     (mt/with-empty-db
       (mt/with-premium-features #{:transforms}
         (let [table-name "e2e_comprehensive_test"
