@@ -111,6 +111,12 @@
                      {:name "json_field" :type :type/JSON :nullable? true}]
            :data [[1 "{\"key\": \"value\"}"]
                   [2 nil]]}
+   :mariadb {:columns [{:name "id" :type :type/Integer :nullable? false}
+                       {:name "json_field" :type :type/JSON :nullable? true}
+                       {:name "uuid_field" :type :type/UUID :nullable? true :database-type "uuid"}
+                       {:name "inet4_field" :type :type/IPAddress :nullable? true :database-type "inet4"}]
+             :data [[1 "{\"key\": \"mariadb_value\"}" "550e8400-e29b-41d4-a716-446655440000" "192.168.1.1"]
+                    [2 nil nil nil]]}
    :bigquery-cloud-sdk {:columns [{:name "id" :type :type/Integer :nullable? false}
                                   {:name "json_field" :type :type/JSON :nullable? true}
                                   {:name "array_field" :type :type/Array :nullable? true :database-type "ARRAY<INT64>"}
@@ -207,7 +213,7 @@
 
 (deftest base-types-python-transform-test
   "Test Python transforms with base types across all supported drivers."
-  (mt/test-drivers #{:h2 :postgres :mysql :bigquery-cloud-sdk :snowflake :sqlserver :redshift :clickhouse}
+  (mt/test-drivers #{:h2 :postgres :mysql :mariadb :bigquery-cloud-sdk :snowflake :sqlserver :redshift :clickhouse}
     (mt/with-empty-db
       (let [table-name "base_types_test"
             qualified-table-name (create-test-table-with-data
@@ -247,7 +253,7 @@
 
 (deftest exotic-types-python-transform-test
   "Test Python transforms with driver-specific exotic types."
-  (mt/test-drivers #{:h2 :postgres :mysql :bigquery-cloud-sdk :snowflake :sqlserver :redshift :clickhouse :mongo}
+  (mt/test-drivers #{:h2 :postgres :mysql :mariadb :bigquery-cloud-sdk :snowflake :sqlserver :redshift :clickhouse :mongo}
     (mt/with-empty-db
       (when-let [exotic-config (get driver-exotic-types driver/*driver*)]
         (let [table-name "exotic_types_test"
@@ -293,6 +299,14 @@
                   :mysql (when (contains? dtype-map "json_field")
                            (is (contains? #{:type/Text :type/JSON} (dtype-map "json_field"))))
 
+                  :mariadb (do
+                             (when (contains? dtype-map "json_field")
+                               (is (contains? #{:type/Text :type/JSON} (dtype-map "json_field"))))
+                             (when (contains? dtype-map "uuid_field")
+                               (is (contains? #{:type/Text :type/UUID} (dtype-map "uuid_field"))))
+                             (when (contains? dtype-map "inet4_field")
+                               (is (contains? #{:type/Text :type/IPAddress} (dtype-map "inet4_field")))))
+
                   :bigquery-cloud-sdk (do
                                         (when (contains? dtype-map "json_field")
                                           (is (contains? #{:type/Text :type/JSON} (dtype-map "json_field"))))
@@ -327,7 +341,7 @@
 
 (deftest edge-cases-python-transform-test
   "Test Python transforms with edge cases: null values, empty strings, extreme values."
-  (mt/test-drivers #{:h2 :postgres :mysql :bigquery-cloud-sdk :snowflake :sqlserver :redshift :clickhouse}
+  (mt/test-drivers #{:h2 :postgres :mysql :mariadb :bigquery-cloud-sdk :snowflake :sqlserver :redshift :clickhouse}
     (mt/with-empty-db
       (let [table-name "edge_cases_test"
             edge-case-schema {:columns [{:name "id" :type :type/Integer :nullable? false}
@@ -413,7 +427,7 @@
 
 (deftest idempotent-transform-test
   "Test that running the same transform multiple times produces identical results."
-  (mt/test-drivers #{:h2 :postgres :mysql :bigquery-cloud-sdk :snowflake :sqlserver :redshift :clickhouse}
+  (mt/test-drivers #{:h2 :postgres :mysql :mariadb :bigquery-cloud-sdk :snowflake :sqlserver :redshift :clickhouse}
     (mt/with-empty-db
       (let [table-name "idempotent_test"
             qualified-table-name (create-test-table-with-data
@@ -466,7 +480,7 @@
 
 (deftest comprehensive-e2e-python-transform-test
   "End-to-end test using execute-python-transform! across all supported drivers with comprehensive type coverage."
-  (mt/test-drivers #{:h2 :postgres :mysql :bigquery-cloud-sdk :snowflake :sqlserver :redshift :clickhouse}
+  (mt/test-drivers #{:h2 :postgres :mysql :mariadb :bigquery-cloud-sdk :snowflake :sqlserver :redshift :clickhouse}
     (mt/with-empty-db
       (mt/with-premium-features #{:transforms}
         (let [table-name "e2e_comprehensive_test"
@@ -729,6 +743,88 @@
 
           (cleanup-table qualified-table-name)))))
 
+  (testing "MariaDB exotic edge cases"
+    (mt/test-driver :mariadb
+      (mt/with-empty-db
+        (let [table-name "mariadb_exotic_edge_cases"
+              mariadb-edge-schema
+              {:columns [{:name "id" :type :type/Integer :nullable? false}
+                         ;; MariaDB specific types
+                         {:name "json_field" :type :type/JSON :nullable? true}
+                         {:name "sequence_field" :type :type/Integer :nullable? true :database-type "bigint"} ; MariaDB sequences
+                         {:name "uuid_field" :type :type/UUID :nullable? true :database-type "uuid"} ; MariaDB UUID type
+                         {:name "inet4_field" :type :type/IPAddress :nullable? true :database-type "inet4"} ; MariaDB INET4
+                         {:name "inet6_field" :type :type/IPAddress :nullable? true :database-type "inet6"} ; MariaDB INET6
+                         {:name "rowversion_field" :type :type/Integer :nullable? true :database-type "rowversion"} ; MariaDB versioning
+                         {:name "blob_field" :type :type/Text :nullable? true :database-type "longblob"}
+                         {:name "geometry_field" :type :type/Text :nullable? true :database-type "geometry"}
+                         {:name "linestring_field" :type :type/Text :nullable? true :database-type "linestring"}
+                         {:name "polygon_field" :type :type/Text :nullable? true :database-type "polygon"}]
+               :data [[1 "{\"mariadb\": true, \"features\": [\"sequences\", \"uuid\", \"inet\"]}"
+                       1000000000000 "550e8400-e29b-41d4-a716-446655440000" "192.168.1.100"
+                       "2001:db8::1" 1 "binary blob data"
+                       "POINT(1 1)" "LINESTRING(0 0,1 1,2 1)"
+                       "POLYGON((0 0,4 0,4 4,0 4,0 0),(1 1, 2 1, 2 2, 1 2,1 1))"]
+                      [2 "{\"version\": \"10.11\", \"storage_engines\": [\"InnoDB\", \"Aria\", \"MyRocks\"]}"
+                       999999999999 "00000000-0000-0000-0000-000000000000" "10.0.0.1"
+                       "::1" 2 "compressed data here"
+                       "MULTIPOINT(0 0, 1 2)" "MULTILINESTRING((0 0,1 1,2 2),(3 3,4 4,5 5))"
+                       "MULTIPOLYGON(((0 0,4 0,4 4,0 4,0 0)),((1 1,2 1,2 2,1 2,1 1)))"]
+                      [3 "[]" 0 "ffffffff-ffff-ffff-ffff-ffffffffffff" "255.255.255.255"
+                       "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff" 3 ""
+                       "GEOMETRYCOLLECTION EMPTY" "LINESTRING EMPTY" "POLYGON EMPTY"]
+                      [4 nil nil nil nil nil nil nil nil nil nil]]}
+
+              qualified-table-name (create-test-table-with-data
+                                    table-name
+                                    mariadb-edge-schema
+                                    (:data mariadb-edge-schema))
+
+              transform-code (str "import pandas as pd\n"
+                                  "\n"
+                                  "def transform(" table-name "):\n"
+                                  "    df = " table-name ".copy()\n"
+                                  "    \n"
+                                  "    # JSON operations specific to MariaDB\n"
+                                  "    df['json_has_mariadb'] = df['json_field'].astype(str).str.contains('mariadb', na=False)\n"
+                                  "    df['json_has_engines'] = df['json_field'].astype(str).str.contains('storage_engines', na=False)\n"
+                                  "    \n"
+                                  "    # Sequence operations\n"
+                                  "    df['sequence_large'] = df['sequence_field'] > 1e11\n"
+                                  "    df['sequence_scaled'] = df['sequence_field'] / 1000000\n"
+                                  "    \n"
+                                  "    # UUID operations\n"
+                                  "    df['uuid_is_nil'] = df['uuid_field'].astype(str).str.startswith('00000000', na=False)\n"
+                                  "    df['uuid_is_max'] = df['uuid_field'].astype(str).str.startswith('ffffffff', na=False)\n"
+                                  "    \n"
+                                  "    # INET operations\n"
+                                  "    df['inet4_is_private'] = df['inet4_field'].astype(str).str.contains('192.168|10\\.', na=False)\n"
+                                  "    df['inet6_is_loopback'] = df['inet6_field'].astype(str).str.contains('::1', na=False)\n"
+                                  "    \n"
+                                  "    # Geometric operations\n"
+                                  "    df['geom_is_point'] = df['geometry_field'].astype(str).str.contains('POINT', na=False)\n"
+                                  "    df['geom_is_multi'] = df['geometry_field'].astype(str).str.contains('MULTI', na=False)\n"
+                                  "    df['geom_is_empty'] = df['geometry_field'].astype(str).str.contains('EMPTY', na=False)\n"
+                                  "    \n"
+                                  "    return df")
+
+              result (execute {:code transform-code
+                               :tables {table-name (mt/id qualified-table-name)}})]
+
+          (testing "MariaDB exotic transform succeeded"
+            (is (some? result) "MariaDB transform should succeed"))
+
+          (when result
+            (testing "MariaDB exotic types processed"
+              (let [csv-data (csv/read-csv (:output result))
+                    headers (first csv-data)]
+                (is (contains? (set headers) "json_has_mariadb"))
+                (is (contains? (set headers) "uuid_is_nil"))
+                (is (contains? (set headers) "inet4_is_private"))
+                (is (contains? (set headers) "geom_is_point")))))
+
+          (cleanup-table qualified-table-name)))))
+
   (testing "BigQuery exotic edge cases"
     (mt/test-driver :bigquery-cloud-sdk
       (mt/with-empty-db
@@ -955,7 +1051,7 @@
 
 (deftest large-values-python-transform-test
   "Test Python transforms with large-ish values that should work within 63-bit limits."
-  (mt/test-drivers #{:h2 :postgres :mysql :snowflake}
+  (mt/test-drivers #{:h2 :postgres :mysql :mariadb :snowflake}
     (mt/with-empty-db
       (let [table-name "large_values_test"
             large-values-schema
