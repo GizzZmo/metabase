@@ -171,13 +171,15 @@
     ;; Sync the database to make the table available
     (sync/sync-database! (mt/db) {:scan :schema})
 
-    qualified-table-name))
+    ;; Return the actual table ID from the database
+    (t2/select-one-pk :model/Table :name (name qualified-table-name) :db_id db-id)))
 
 (defn- cleanup-table
-  "Drop the test table."
-  [qualified-table-name]
+  "Drop the test table by table ID."
+  [table-id]
   (try
-    (driver/drop-table! driver/*driver* (mt/id) qualified-table-name)
+    (when-let [table (t2/select-one :model/Table :id table-id)]
+      (driver/drop-table! driver/*driver* (mt/id) (keyword (:name table))))
     (catch Exception _e
       ;; Ignore cleanup errors
       nil)))
@@ -217,24 +219,24 @@
     (mt/with-empty-db
       (let [table-name (mt/random-name)
 
-            qualified-table-name (create-test-table-with-data
-                                  table-name
-                                  base-type-test-data
-                                  (:data base-type-test-data))]
+            table-id (create-test-table-with-data
+                      table-name
+                      base-type-test-data
+                      (:data base-type-test-data))]
 
-        (is (mt/id qualified-table-name))
+        (is table-id "Table should be created and have an ID")
         ;; Cleanup
-        (cleanup-table qualified-table-name)))))
+        (cleanup-table table-id)))))
 
 (deftest base-types-python-transform-test
   "Test Python transforms with base types across all supported drivers."
   (mt/test-drivers #{:h2 :postgres :mysql :mariadb :bigquery-cloud-sdk :snowflake :sqlserver :redshift :clickhouse}
     (mt/with-empty-db
       (let [table-name (mt/random-name)
-            qualified-table-name (create-test-table-with-data
-                                  table-name
-                                  base-type-test-data
-                                  (:data base-type-test-data))
+            table-id (create-test-table-with-data
+                      table-name
+                      base-type-test-data
+                      (:data base-type-test-data))
 
             ;; Simple identity transform that should preserve all types
             transform-code (str "import pandas as pd\n"
@@ -244,7 +246,7 @@
                                 "    return df")
 
             result (execute {:code transform-code
-                             :tables {table-name (mt/id qualified-table-name)}})
+                             :tables {table-name table-id}})
 
             expected-columns ["id" "name" "price" "active" "created_date" "created_at" "created_tz"]
 
@@ -264,7 +266,7 @@
                 (is (= :type/DateTimeWithTZ (dtype-map "created_tz")))))))
 
         ;; Cleanup
-        (cleanup-table qualified-table-name)))))
+        (cleanup-table table-id)))))
 
 (deftest exotic-types-python-transform-test
   "Test Python transforms with driver-specific exotic types."
@@ -272,10 +274,10 @@
     (mt/with-empty-db
       (when-let [exotic-config (get driver-exotic-types driver/*driver*)]
         (let [table-name (mt/random-name)
-              qualified-table-name (create-test-table-with-data
-                                    table-name
-                                    exotic-config
-                                    (:data exotic-config))
+              table-id (create-test-table-with-data
+                        table-name
+                        exotic-config
+                        (:data exotic-config))
 
               ;; Simple identity transform
               transform-code (str "import pandas as pd\n"
@@ -285,7 +287,7 @@
                                   "    return df")
 
               result (execute {:code transform-code
-                               :tables {table-name (mt/id qualified-table-name)}})
+                               :tables {table-name table-id}})
 
               expected-columns (map :name (:columns exotic-config))
               expected-row-count (count (:data exotic-config))
@@ -352,7 +354,7 @@
                              (is (contains? #{:type/Text :type/MongoBSONID} (dtype-map "bson_id")))))))))
 
           ;; Cleanup
-          (cleanup-table qualified-table-name))))))
+          (cleanup-table table-id))))))
 
 (deftest edge-cases-python-transform-test
   "Test Python transforms with edge cases: null values, empty strings, extreme values."
@@ -370,10 +372,10 @@
                                       2147483647 1.7976931348623157E308 true "9999-12-31"] ; Maximum values
                                      [3 nil nil nil nil nil]]} ; All nulls
 
-            qualified-table-name (create-test-table-with-data
-                                  table-name
-                                  edge-case-schema
-                                  (:data edge-case-schema))
+            table-id (create-test-table-with-data
+                      table-name
+                      edge-case-schema
+                      (:data edge-case-schema))
 
             ;; Transform that performs operations on each column type
             transform-code (str "import pandas as pd\n"
@@ -395,7 +397,7 @@
                                 "    return df")
 
             result (execute {:code transform-code
-                             :tables {table-name (mt/id qualified-table-name)}})
+                             :tables {table-name table-id}})
 
             expected-columns ["id" "text_field" "int_field" "float_field" "bool_field" "date_field"
                               "text_length" "int_doubled" "float_squared" "bool_inverted"]
@@ -438,17 +440,17 @@
                 (is (= "3" (get-col row3 "id")))))))
 
         ;; Cleanup
-        (cleanup-table qualified-table-name)))))
+        (cleanup-table table-id)))))
 
 (deftest idempotent-transform-test
   "Test that running the same transform multiple times produces identical results."
   (mt/test-drivers #{:h2 :postgres :mysql :mariadb :bigquery-cloud-sdk :snowflake :sqlserver :redshift :clickhouse}
     (mt/with-empty-db
       (let [table-name (mt/random-name)
-            qualified-table-name (create-test-table-with-data
-                                  table-name
-                                  base-type-test-data
-                                  (:data base-type-test-data))
+            table-id (create-test-table-with-data
+                      table-name
+                      base-type-test-data
+                      (:data base-type-test-data))
 
             ;; Transform that adds computed columns
             transform-code (str "import pandas as pd\n"
@@ -462,11 +464,11 @@
             ;; Run the transform twice
             result1 (execute-python-transform
                      transform-code
-                     {table-name (mt/id qualified-table-name)})
+                     {table-name table-id})
 
             result2 (execute-python-transform
                      transform-code
-                     {table-name (mt/id qualified-table-name)})]
+                     {table-name table-id})]
 
         (testing "Both transforms succeeded"
           (is (some? result1))
@@ -491,7 +493,7 @@
                   (is (= :type/Text (dtype-map "name_upper"))))))))
 
         ;; Cleanup
-        (cleanup-table qualified-table-name)))))
+        (cleanup-table table-id)))))
 
 (deftest comprehensive-e2e-python-transform-test
   "End-to-end test using execute-python-transform! across all supported drivers with comprehensive type coverage."
@@ -499,13 +501,13 @@
     (mt/with-empty-db
       (mt/with-premium-features #{:transforms}
         (let [table-name (mt/random-name)
-              source-table-name "source_comprehensive_test"
+              source-table-name (mt/random-name)
 
               ;; Create source table with comprehensive types
-              source-qualified-table-name (create-test-table-with-data
-                                           source-table-name
-                                           base-type-test-data
-                                           (:data base-type-test-data))
+              source-table-id (create-test-table-with-data
+                               source-table-name
+                               base-type-test-data
+                               (:data base-type-test-data))
 
               ;; Add driver-specific exotic types if available
               exotic-config (get driver-exotic-types driver/*driver*)
@@ -541,9 +543,9 @@
                                   "    return df")
 
               ;; Execute the e2e transform
-              source-tables (cond-> {source-table-name (mt/id source-qualified-table-name)}
+              source-tables (cond-> {source-table-name source-table-id}
                               exotic-qualified-table-name
-                              (assoc (str source-table-name "_exotic") (mt/id exotic-qualified-table-name)))
+                              (assoc (str source-table-name "_exotic") (t2/select-one-pk :model/Table :name (name exotic-qualified-table-name) :db_id (mt/id))))
 
               result-rows (execute-e2e-transform! table-name transform-code source-tables)]
 
@@ -573,7 +575,7 @@
                 (is (seq result-rows) "All drivers should produce results"))))
 
           ;; Cleanup source tables
-          (cleanup-table source-qualified-table-name)
+          (cleanup-table source-table-id)
           (when exotic-qualified-table-name
             (cleanup-table exotic-qualified-table-name)))))))
 
@@ -615,10 +617,10 @@
                        "{}" "{}" "(0.000001,0.000001)" 0.0000000001]
                       [4 nil nil nil nil nil nil nil nil nil nil nil nil]]}
 
-              qualified-table-name (create-test-table-with-data
-                                    table-name
-                                    exotic-edge-schema
-                                    (:data exotic-edge-schema))
+              table-id (create-test-table-with-data
+                        table-name
+                        exotic-edge-schema
+                        (:data exotic-edge-schema))
 
               ;; Transform that tests exotic type handling
               transform-code (str "import pandas as pd\n"
@@ -651,7 +653,7 @@
                                   "    return df")
 
               result (execute {:code transform-code
-                               :tables {table-name (mt/id qualified-table-name)}})]
+                               :tables {table-name table-id}})]
 
           (testing "PostgreSQL exotic transform succeeded"
             (is (some? result) "Transform should succeed")
@@ -685,7 +687,7 @@
                   (is (contains? #{:type/Decimal :type/Float} (dtype-map "money_doubled")))))))
 
           ;; Cleanup
-          (cleanup-table qualified-table-name)))))
+          (cleanup-table table-id)))))
 
   (testing "MySQL/MariaDB exotic edge cases"
     (mt/test-driver :mysql
@@ -713,10 +715,10 @@
                       [3 "[]" 2155 "small" "" 1 0 0 0.0000000001 "" ""]
                       [4 nil nil nil nil nil nil nil nil nil nil]]}
 
-              qualified-table-name (create-test-table-with-data
-                                    table-name
-                                    mysql-edge-schema
-                                    (:data mysql-edge-schema))
+              table-id (create-test-table-with-data
+                        table-name
+                        mysql-edge-schema
+                        (:data mysql-edge-schema))
 
               transform-code (str "import pandas as pd\n"
                                   "import json\n"
@@ -743,7 +745,7 @@
                                   "    return df")
 
               result (execute {:code transform-code
-                               :tables {table-name (mt/id qualified-table-name)}})]
+                               :tables {table-name table-id}})]
 
           (testing "MySQL exotic transform succeeded"
             (is (some? result) "MySQL transform should succeed"))
@@ -756,7 +758,7 @@
                 (is (contains? (set headers) "enum_size_category"))
                 (is (contains? (set headers) "bit_is_max")))))
 
-          (cleanup-table qualified-table-name)))))
+          (cleanup-table table-id)))))
 
   (testing "MariaDB exotic edge cases"
     (mt/test-driver :mariadb
@@ -790,10 +792,10 @@
                        "GEOMETRYCOLLECTION EMPTY" "LINESTRING EMPTY" "POLYGON EMPTY"]
                       [4 nil nil nil nil nil nil nil nil nil nil]]}
 
-              qualified-table-name (create-test-table-with-data
-                                    table-name
-                                    mariadb-edge-schema
-                                    (:data mariadb-edge-schema))
+              table-id (create-test-table-with-data
+                        table-name
+                        mariadb-edge-schema
+                        (:data mariadb-edge-schema))
 
               transform-code (str "import pandas as pd\n"
                                   "\n"
@@ -824,7 +826,7 @@
                                   "    return df")
 
               result (execute {:code transform-code
-                               :tables {table-name (mt/id qualified-table-name)}})]
+                               :tables {table-name table-id}})]
 
           (testing "MariaDB exotic transform succeeded"
             (is (some? result) "MariaDB transform should succeed"))
@@ -838,7 +840,7 @@
                 (is (contains? (set headers) "inet4_is_private"))
                 (is (contains? (set headers) "geom_is_point")))))
 
-          (cleanup-table qualified-table-name)))))
+          (cleanup-table table-id)))))
 
   (testing "BigQuery exotic edge cases"
     (mt/test-driver :bigquery-cloud-sdk
@@ -871,10 +873,10 @@
                        0.00000000000000000000000000000000000001 "" "2000-01-01T12:00:00" "12:00:00"]
                       [4 nil nil nil nil nil nil nil nil nil]]}
 
-              qualified-table-name (create-test-table-with-data
-                                    table-name
-                                    bq-edge-schema
-                                    (:data bq-edge-schema))
+              table-id (create-test-table-with-data
+                        table-name
+                        bq-edge-schema
+                        (:data bq-edge-schema))
 
               transform-code (str "import pandas as pd\n"
                                   "import json\n"
@@ -901,7 +903,7 @@
                                   "    return df")
 
               result (execute {:code transform-code
-                               :tables {table-name (mt/id qualified-table-name)}})]
+                               :tables {table-name table-id}})]
 
           (testing "BigQuery exotic transform succeeded"
             (is (some? result) "BigQuery transform should succeed"))
@@ -914,7 +916,7 @@
                 (is (contains? (set headers) "is_point"))
                 (is (contains? (set headers) "has_large_number")))))
 
-          (cleanup-table qualified-table-name)))))
+          (cleanup-table table-id)))))
 
   (testing "Snowflake exotic edge cases"
     (mt/test-driver :snowflake
@@ -946,10 +948,10 @@
                        0 "2000-01-01 12:00:00" "2000-01-01 12:00:00 +0000" "2000-01-01 12:00:00 +0000"]
                       [4 nil nil nil nil nil nil nil nil nil]]}
 
-              qualified-table-name (create-test-table-with-data
-                                    table-name
-                                    sf-edge-schema
-                                    (:data sf-edge-schema))
+              table-id (create-test-table-with-data
+                        table-name
+                        sf-edge-schema
+                        (:data sf-edge-schema))
 
               transform-code (str "import pandas as pd\n"
                                   "\n"
@@ -975,7 +977,7 @@
                                   "    return df")
 
               result (execute {:code transform-code
-                               :tables {table-name (mt/id qualified-table-name)}})]
+                               :tables {table-name table-id}})]
 
           (testing "Snowflake exotic transform succeeded"
             (is (some? result) "Snowflake transform should succeed"))
@@ -988,7 +990,7 @@
                 (is (contains? (set headers) "is_point_geo"))
                 (is (contains? (set headers) "is_huge_number")))))
 
-          (cleanup-table qualified-table-name)))))
+          (cleanup-table table-id)))))
 
   (testing "ClickHouse exotic edge cases"
     (mt/test-driver :clickhouse
@@ -1017,10 +1019,10 @@
                        0 "          " "large"]
                       [4 nil nil nil nil nil nil nil nil nil]]}
 
-              qualified-table-name (create-test-table-with-data
-                                    table-name
-                                    ch-edge-schema
-                                    (:data ch-edge-schema))
+              table-id (create-test-table-with-data
+                        table-name
+                        ch-edge-schema
+                        (:data ch-edge-schema))
 
               transform-code (str "import pandas as pd\n"
                                   "\n"
@@ -1049,7 +1051,7 @@
                                   "    return df")
 
               result (execute {:code transform-code
-                               :tables {table-name (mt/id qualified-table-name)}})]
+                               :tables {table-name table-id}})]
 
           (testing "ClickHouse exotic transform succeeded"
             (is (some? result) "ClickHouse transform should succeed"))
@@ -1062,7 +1064,7 @@
                 (is (contains? (set headers) "ipv4_is_private"))
                 (is (contains? (set headers) "uuid_is_null")))))
 
-          (cleanup-table qualified-table-name))))))
+          (cleanup-table table-id))))))
 
 (deftest large-values-python-transform-test
   "Test Python transforms with large-ish values that should work within 63-bit limits."
@@ -1093,10 +1095,10 @@
                      "2000-01-01 12:00:00"]
                     [4 nil nil nil nil nil]]} ; All nulls
 
-            qualified-table-name (create-test-table-with-data
-                                  table-name
-                                  large-values-schema
-                                  (:data large-values-schema))
+            table-id (create-test-table-with-data
+                      table-name
+                      large-values-schema
+                      (:data large-values-schema))
 
             ;; Transform that processes large values
             transform-code (str "import pandas as pd\n"
@@ -1124,7 +1126,7 @@
                                 "    return df")
 
             result (execute {:code transform-code
-                             :tables {table-name (mt/id qualified-table-name)}})]
+                             :tables {table-name table-id}})]
 
         (testing "Large values transform succeeded"
           (is (some? result) "Transform with large values should succeed")
@@ -1159,4 +1161,4 @@
                   (is (contains? #{"True" "true" "1"} has-unicode) "Should detect unicode characters"))))))
 
         ;; Cleanup
-        (cleanup-table qualified-table-name)))))
+        (cleanup-table table-id)))))
