@@ -18,6 +18,8 @@
    [metabase.util.json :as json]
    [toucan2.core :as t2]))
 
+;; TODO: (deftest x "docstring" ..) -> (deftest x (testing "docstring" ..))
+
 (set! *warn-on-reflection* true)
 
 (def test-id 42)
@@ -98,6 +100,7 @@
           [2 "Product B" 15.50 false "2024-02-01" "2024-02-01T09:15:30"]
           [3 nil nil nil nil nil]]})
 
+;; TODO: test postgres arrays
 ;; TODO: datetimewithtz to other dbs
 ;; TODO: check datetime-equal
 (def ^:private driver-exotic-types
@@ -177,6 +180,7 @@
     ;; Return the actual table ID from the database
     (t2/select-one-pk :model/Table :name (name qualified-table-name) :db_id db-id)))
 
+;; TODO: this fails on bigquery  because of "Table \"YJTBZAJCJLCCOAKAYIPF\" must be qualified with a dataset (e.g. dataset.table).",
 (defn- cleanup-table
   "Drop the test table by table ID."
   [table-id]
@@ -223,7 +227,7 @@
     (mt/with-empty-db
       (let [table-name (mt/random-name)
 
-            table-id (create-test-table-with-data
+            table-id (create-test-table-with-data!
                       table-name
                       base-type-test-data
                       (:data base-type-test-data))]
@@ -237,7 +241,7 @@
   (mt/test-drivers #{:h2 :postgres :mysql :mariadb :bigquery-cloud-sdk :snowflake :sqlserver :redshift :clickhouse}
     (mt/with-empty-db
       (let [table-name (mt/random-name)
-            table-id (create-test-table-with-data
+            table-id (create-test-table-with-data!
                       table-name
                       base-type-test-data
                       (:data base-type-test-data))
@@ -277,7 +281,7 @@
     (mt/with-empty-db
       (when-let [exotic-config (get driver-exotic-types driver/*driver*)]
         (let [table-name (mt/random-name)
-              table-id (create-test-table-with-data
+              table-id (create-test-table-with-data!
                         table-name
                         exotic-config
                         (:data exotic-config))
@@ -375,7 +379,7 @@
                                       2147483647 1.7976931348623157E308 true "2222-12-31"]
                                      [3 nil nil nil nil nil]]} ; All nulls
 
-            table-id (create-test-table-with-data
+            table-id (create-test-table-with-data!
                       table-name
                       edge-case-schema
                       (:data edge-case-schema))
@@ -448,7 +452,7 @@
   (mt/test-drivers #{:h2 :postgres :mysql :mariadb :bigquery-cloud-sdk :snowflake :sqlserver :redshift :clickhouse}
     (mt/with-empty-db
       (let [table-name (mt/random-name)
-            table-id (create-test-table-with-data
+            table-id (create-test-table-with-data!
                       table-name
                       base-type-test-data
                       (:data base-type-test-data))
@@ -505,7 +509,7 @@
               source-table-name (mt/random-name)
 
               ;; Create source table with comprehensive types
-              source-table-id (create-test-table-with-data
+              source-table-id (create-test-table-with-data!
                                source-table-name
                                base-type-test-data
                                (:data base-type-test-data))
@@ -580,6 +584,7 @@
           (when exotic-table-id
             (cleanup-table exotic-table-id)))))))
 
+;; TODO: split per driver, and check results not juts metadata
 (deftest exotic-edge-cases-python-transform-test
   "Test Python transforms with very exotic types and edge case values that should work transparently."
   (testing "PostgreSQL exotic edge cases"
@@ -671,7 +676,7 @@
                 (is (= 4 (count rows)) "Should have 4 rows")
                 (is (> (count headers) 13) "Should have computed columns")
 
-      ;; Check some computed columns exist
+                ;; Check some computed columns exist
                 (is (contains? (set headers) "has_ipv6") "Should have IPv6 detection")
                 (is (contains? (set headers) "money_doubled") "Should have money calculations")
                 (is (contains? (set headers) "has_coords") "Should have geometric operations"))
@@ -679,11 +684,11 @@
               (testing "Type preservation for exotic types"
                 (let [dtype-map (u/for-map [{:keys [name dtype]} (:fields metadata)]
                                   [name (transforms.util/dtype->base-type dtype)])]
-        ;; Original exotic types should be preserved as text or appropriate types
+                  ;; Original exotic types should be preserved as text or appropriate types
                   (is (contains? #{:type/Text :type/IPAddress} (dtype-map "inet_field")))
                   (is (contains? #{:type/Decimal :type/Float} (dtype-map "money_field")))
                   (is (contains? #{:type/Text :type/Array} (dtype-map "int_array")))
-        ;; Computed columns should have expected types
+                  ;; Computed columns should have expected types
                   (is (= :type/Boolean (dtype-map "has_ipv6")))
                   (is (contains? #{:type/Decimal :type/Float} (dtype-map "money_doubled")))))))
 
@@ -753,8 +758,8 @@
 
           (when result
             (testing "MySQL exotic types processed"
-              (let [csv-data (csv/read-csv (:output result))
-                    headers (first csv-data)]
+              (let [metadata (:output-manifest result)
+                    headers (map :name (:fields metadata))]
                 (is (contains? (set headers) "json_has_nested"))
                 (is (contains? (set headers) "enum_size_category"))
                 (is (contains? (set headers) "bit_is_max")))))
@@ -834,8 +839,8 @@
 
           (when result
             (testing "MariaDB exotic types processed"
-              (let [csv-data (csv/read-csv (:output result))
-                    headers (first csv-data)]
+              (let [metadata (:output-manifest result)
+                    headers (map :name (:fields metadata))]
                 (is (contains? (set headers) "json_has_mariadb"))
                 (is (contains? (set headers) "uuid_is_nil"))
                 (is (contains? (set headers) "inet4_is_private"))
@@ -911,8 +916,8 @@
 
           (when result
             (testing "BigQuery exotic types processed"
-              (let [csv-data (csv/read-csv (:output result))
-                    headers (first csv-data)]
+              (let [metadata (:output-manifest result)
+                    headers (map :name (:fields metadata))]
                 (is (contains? (set headers) "struct_has_name"))
                 (is (contains? (set headers) "is_point"))
                 (is (contains? (set headers) "has_large_number")))))
@@ -985,8 +990,8 @@
 
           (when result
             (testing "Snowflake exotic types processed"
-              (let [csv-data (csv/read-csv (:output result))
-                    headers (first csv-data)]
+              (let [metadata (:output-manifest result)
+                    headers (map :name (:fields metadata))]
                 (is (contains? (set headers) "variant_is_complex"))
                 (is (contains? (set headers) "is_point_geo"))
                 (is (contains? (set headers) "is_huge_number")))))
@@ -1059,8 +1064,8 @@
 
           (when result
             (testing "ClickHouse exotic types processed"
-              (let [csv-data (csv/read-csv (:output result))
-                    headers (first csv-data)]
+              (let [metadata (:output-manifest result)
+                    headers (map :name (:fields metadata))]
                 (is (contains? (set headers) "array_has_positive"))
                 (is (contains? (set headers) "ipv4_is_private"))
                 (is (contains? (set headers) "uuid_is_null")))))
