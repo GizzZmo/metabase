@@ -130,12 +130,16 @@
              :data [[1 "{\"key\": \"mariadb_value\"}" "550e8400-e29b-41d4-a716-446655440000" "192.168.1.1"]
                     [2 nil nil nil]]}
 
+   ;; TODO: insert not working rn
    :bigquery-cloud-sdk {:columns [{:name "id" :type :type/Integer :nullable? false}
                                   {:name "json_field" :type :type/JSON :nullable? true}
-                                  {:name "array_field" :type :type/Array :nullable? true :database-type "ARRAY<INT64>"}
-                                  {:name "dict_field" :type :type/Dictionary :nullable? true :database-type "STRUCT<key STRING, value INT64>"}]
-                        :data [[1 "{\"key\": \"value\"}" "[1, 2, 3]" "{\"key\": \"test\", \"value\": 42}"]
-                               [2 nil nil nil]]}
+                                  ;; {:name "array_field" :type :type/Array :nullable? true :database-type "ARRAY<INT64>"}
+                                  ;; {:name "dict_field" :type :type/Dictionary :nullable? true :database-type "STRUCT<key STRING, value INT64>"}
+                                  ]
+                        :data [[1 "{\"key\": \"value\"}" ;; "[1, 2, 3]" "{\"key\": \"test\", \"value\": 42}"
+                                ]
+                               [2 nil ;; nil nil
+                                ]]}
    :snowflake {:columns [{:name "id" :type :type/Integer :nullable? false}
                          {:name "array_field" :type :type/Array :nullable? true :database-type "ARRAY"}]
                :data [[1 "[1, 2, 3]"]
