@@ -212,17 +212,17 @@
        :metadata metadata})))
 
 (deftest create-table-test
-  "Test Python transforms with base types across all supported drivers."
+  "Test we can create base table"
   (mt/test-drivers #{:h2 :postgres :mysql :mariadb :bigquery-cloud-sdk :snowflake :sqlserver :redshift :clickhouse}
     (mt/with-empty-db
-      (let [table-name "base_types_test"
+      (let [table-name (mt/random-name)
+
             qualified-table-name (create-test-table-with-data
                                   table-name
                                   base-type-test-data
                                   (:data base-type-test-data))]
 
         (is (mt/id qualified-table-name))
-
         ;; Cleanup
         (cleanup-table qualified-table-name)))))
 
@@ -230,7 +230,7 @@
   "Test Python transforms with base types across all supported drivers."
   (mt/test-drivers #{:h2 :postgres :mysql :mariadb :bigquery-cloud-sdk :snowflake :sqlserver :redshift :clickhouse}
     (mt/with-empty-db
-      (let [table-name "base_types_test"
+      (let [table-name (mt/random-name)
             qualified-table-name (create-test-table-with-data
                                   table-name
                                   base-type-test-data
@@ -271,7 +271,7 @@
   (mt/test-drivers #{:h2 :postgres :mysql :mariadb :bigquery-cloud-sdk :snowflake :sqlserver :redshift :clickhouse :mongo}
     (mt/with-empty-db
       (when-let [exotic-config (get driver-exotic-types driver/*driver*)]
-        (let [table-name "exotic_types_test"
+        (let [table-name (mt/random-name)
               qualified-table-name (create-test-table-with-data
                                     table-name
                                     exotic-config
@@ -358,7 +358,7 @@
   "Test Python transforms with edge cases: null values, empty strings, extreme values."
   (mt/test-drivers #{:h2 :postgres :mysql :mariadb :bigquery-cloud-sdk :snowflake :sqlserver :redshift :clickhouse}
     (mt/with-empty-db
-      (let [table-name "edge_cases_test"
+      (let [table-name (mt/random-name)
             edge-case-schema {:columns [{:name "id" :type :type/Integer :nullable? false}
                                         {:name "text_field" :type :type/Text :nullable? true}
                                         {:name "int_field" :type :type/Integer :nullable? true}
@@ -430,7 +430,7 @@
                 (is (= "0" (get-col row1 "text_length"))) ; empty string length
                 (is (= "0" (get-col row1 "int_doubled"))) ; 0 * 2
 
-                ;; Row 2: maximum values  
+                ;; Row 2: maximum values
                 (is (= "2" (get-col row2 "id")))
                 (is (not= "" (get-col row2 "text_length"))) ; long string has length
 
@@ -444,7 +444,7 @@
   "Test that running the same transform multiple times produces identical results."
   (mt/test-drivers #{:h2 :postgres :mysql :mariadb :bigquery-cloud-sdk :snowflake :sqlserver :redshift :clickhouse}
     (mt/with-empty-db
-      (let [table-name "idempotent_test"
+      (let [table-name (mt/random-name)
             qualified-table-name (create-test-table-with-data
                                   table-name
                                   base-type-test-data
@@ -498,10 +498,10 @@
   (mt/test-drivers #{:h2 :postgres :mysql :mariadb :bigquery-cloud-sdk :snowflake :sqlserver :redshift :clickhouse}
     (mt/with-empty-db
       (mt/with-premium-features #{:transforms}
-        (let [table-name "e2e_comprehensive_test"
+        (let [table-name (mt/random-name)
               source-table-name "source_comprehensive_test"
 
-              ;; Create source table with comprehensive types 
+              ;; Create source table with comprehensive types
               source-qualified-table-name (create-test-table-with-data
                                            source-table-name
                                            base-type-test-data
@@ -582,7 +582,7 @@
   (testing "PostgreSQL exotic edge cases"
     (mt/test-driver :postgres
       (mt/with-empty-db
-        (let [table-name "postgres_exotic_edge_cases"
+        (let [table-name (mt/random-name)
               exotic-edge-schema
               {:columns [{:name "id" :type :type/Integer :nullable? false}
                          ;; Network types
@@ -690,7 +690,7 @@
   (testing "MySQL/MariaDB exotic edge cases"
     (mt/test-driver :mysql
       (mt/with-empty-db
-        (let [table-name "mysql_exotic_edge_cases"
+        (let [table-name (mt/random-name)
               mysql-edge-schema
               {:columns [{:name "id" :type :type/Integer :nullable? false}
                          ;; MySQL specific types
@@ -761,7 +761,7 @@
   (testing "MariaDB exotic edge cases"
     (mt/test-driver :mariadb
       (mt/with-empty-db
-        (let [table-name "mariadb_exotic_edge_cases"
+        (let [table-name (mt/random-name)
               mariadb-edge-schema
               {:columns [{:name "id" :type :type/Integer :nullable? false}
                          ;; MariaDB specific types
@@ -843,7 +843,7 @@
   (testing "BigQuery exotic edge cases"
     (mt/test-driver :bigquery-cloud-sdk
       (mt/with-empty-db
-        (let [table-name "bigquery_exotic_edge_cases"
+        (let [table-name (mt/random-name)
               bq-edge-schema
               {:columns [{:name "id" :type :type/Integer :nullable? false}
                          ;; BigQuery specific types
@@ -919,7 +919,7 @@
   (testing "Snowflake exotic edge cases"
     (mt/test-driver :snowflake
       (mt/with-empty-db
-        (let [table-name "snowflake_exotic_edge_cases"
+        (let [table-name (mt/random-name)
               sf-edge-schema
               {:columns [{:name "id" :type :type/Integer :nullable? false}
                          ;; Snowflake specific types
@@ -993,7 +993,7 @@
   (testing "ClickHouse exotic edge cases"
     (mt/test-driver :clickhouse
       (mt/with-empty-db
-        (let [table-name "clickhouse_exotic_edge_cases"
+        (let [table-name (mt/random-name)
               ch-edge-schema
               {:columns [{:name "id" :type :type/Integer :nullable? false}
                          ;; ClickHouse specific types
@@ -1068,7 +1068,7 @@
   "Test Python transforms with large-ish values that should work within 63-bit limits."
   (mt/test-drivers #{:h2 :postgres :mysql :mariadb :snowflake}
     (mt/with-empty-db
-      (let [table-name "large_values_test"
+      (let [table-name (mt/random-name)
             large-values-schema
             {:columns [{:name "id" :type :type/Integer :nullable? false}
                        {:name "big_int" :type :type/Integer :nullable? true}
@@ -1154,7 +1154,7 @@
                   (let [length (try (Long/parseLong length-str) (catch Exception _ 0))]
                     (is (> length 9000) "Should handle very long text correctly")))
 
-                ;; Should detect unicode in second row  
+                ;; Should detect unicode in second row
                 (let [has-unicode (get-col (second rows) "has_unicode")]
                   (is (contains? #{"True" "true" "1"} has-unicode) "Should detect unicode characters"))))))
 
