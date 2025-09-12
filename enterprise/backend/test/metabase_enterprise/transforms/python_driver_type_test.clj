@@ -19,7 +19,7 @@
    [metabase.util :as u]
    [toucan2.core :as t2]))
 
-(def test-id (str (random-uuid)))
+(def test-id 42)
 
 (defn- execute
   "Execute a Python transform with the given code and tables, following the existing test pattern."
