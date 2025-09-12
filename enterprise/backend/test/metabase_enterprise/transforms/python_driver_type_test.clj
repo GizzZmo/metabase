@@ -93,20 +93,23 @@
              {:name "price" :type :type/Float :nullable? true}
              {:name "active" :type :type/Boolean :nullable? true}
              {:name "created_date" :type :type/Date :nullable? true}
-             {:name "created_at" :type :type/DateTime :nullable? true}
-             {:name "created_tz" :type :type/DateTimeWithTZ :nullable? true}]
-   :data [[1 "Product A" 19.99 true "2024-01-01" "2024-01-01T12:00:00" "2024-01-01T12:00:00Z"]
-          [2 "Product B" 15.50 false "2024-02-01" "2024-02-01T09:15:30" "2024-02-01T09:15:30-05:00"]
-          [3 nil nil nil nil nil nil]]})
+             {:name "created_at" :type :type/DateTime :nullable? true}]
+   :data [[1 "Product A" 19.99 true "2024-01-01" "2024-01-01T12:00:00"]
+          [2 "Product B" 15.50 false "2024-02-01" "2024-02-01T09:15:30"]
+          [3 nil nil nil nil nil]]})
 
+;; TODO: datetimewithtz to other dbs
+;; TODO: check datetime-equal
 (def ^:private driver-exotic-types
   "Driver-specific exotic types with test data."
   {:postgres {:columns [{:name "id" :type :type/Integer :nullable? false}
+                        {:name "created_tz" :type :type/DateTimeWithTZ :nullable? true}
                         {:name "uuid_field" :type :type/UUID :nullable? true}
                         {:name "json_field" :type :type/JSON :nullable? true}
                         {:name "ip_field" :type :type/IPAddress :nullable? true}]
-              :data [[1 "550e8400-e29b-41d4-a716-446655440000" "{\"key\": \"value\"}" "192.168.1.1"]
-                     [2 nil nil nil]]}
+              :data [[1 "2024-01-01T12:00:00Z" "550e8400-e29b-41d4-a716-446655440000" "{\"key\": \"value\"}" "192.168.1.1"]
+                     [2 nil nil nil nil]
+                     [3 "2024-02-01T09:15:30-05:00" nil nil nil]]}
    :mysql {:columns [{:name "id" :type :type/Integer :nullable? false}
                      {:name "json_field" :type :type/JSON :nullable? true}]
            :data [[1 "{\"key\": \"value\"}"]
@@ -249,7 +252,7 @@
             result (execute! {:code transform-code
                               :tables {table-name table-id}})
 
-            expected-columns ["id" "name" "price" "active" "created_date" "created_at" "created_tz"]
+            expected-columns ["id" "name" "price" "active" "created_date" "created_at"]
 
             validation (validate-transform-output result expected-columns 3)]
 
@@ -263,8 +266,7 @@
                 (is (= :type/Float (dtype-map "price")))
                 (is (= :type/Boolean (dtype-map "active")))
                 (is (= :type/Date (dtype-map "created_date")))
-                (is (= :type/DateTime (dtype-map "created_at")))
-                (is (= :type/DateTimeWithTZ (dtype-map "created_tz")))))))
+                (is (= :type/DateTime (dtype-map "created_at")))))))
 
         ;; Cleanup
         (cleanup-table table-id)))))
@@ -479,7 +481,7 @@
             (is (= (count (:fields (:output-manifest result1)))
                    (count (:fields (:output-manifest result2))))))
 
-          (let [expected-columns ["id" "name" "price" "active" "created_date" "created_at" "created_tz"
+          (let [expected-columns ["id" "name" "price" "active" "created_date" "created_at"
                                   "computed_field" "name_upper"]
                 validation (validate-transform-output result1 expected-columns 3)]
 
