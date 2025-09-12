@@ -656,6 +656,301 @@
                   (is (contains? #{:type/Decimal :type/Float} (dtype-map "money_doubled")))))))
 
           ;; Cleanup
+          (cleanup-table qualified-table-name)))))
+
+  (testing "MySQL/MariaDB exotic edge cases"
+    (mt/test-driver :mysql
+      (mt/with-empty-db
+        (let [table-name "mysql_exotic_edge_cases"
+              mysql-edge-schema
+              {:columns [{:name "id" :type :type/Integer :nullable? false}
+                         ;; MySQL specific types
+                         {:name "json_field" :type :type/JSON :nullable? true}
+                         {:name "year_field" :type :type/Integer :nullable? true :database-type "year"}
+                         {:name "enum_field" :type :type/Text :nullable? true :database-type "enum('small','medium','large')"}
+                         {:name "set_field" :type :type/Text :nullable? true :database-type "set('red','green','blue')"}
+                         {:name "bit_field" :type :type/Integer :nullable? true :database-type "bit(8)"}
+                         {:name "tinyint_field" :type :type/Integer :nullable? true :database-type "tinyint"}
+                         {:name "mediumint_field" :type :type/Integer :nullable? true :database-type "mediumint"}
+                         {:name "decimal_precise" :type :type/Decimal :nullable? true :database-type "decimal(30,10)"}
+                         {:name "longtext_field" :type :type/Text :nullable? true :database-type "longtext"}
+                         {:name "varbinary_field" :type :type/Text :nullable? true :database-type "varbinary(255)"}]
+               :data [[1 "{\"nested\": {\"array\": [1,2,3], \"null\": null}}" 2024 "medium" "red,blue"
+                       255 127 8388607 123456789012345678.1234567890
+                       (apply str (repeat 5000 "MySQL")) "binary data here"]
+                      [2 "{\"emoji\": \"🎉\", \"unicode\": \"你好\"}" 1901 "large" "green"
+                       0 -128 -8388608 -999999999999999.9999999999
+                       "Special chars: \\n\\t\\r" "\\x41\\x42\\x43"]
+                      [3 "[]" 2155 "small" "" 1 0 0 0.0000000001 "" ""]
+                      [4 nil nil nil nil nil nil nil nil nil nil]]}
+
+              qualified-table-name (create-test-table-with-data
+                                    table-name
+                                    mysql-edge-schema
+                                    (:data mysql-edge-schema))
+
+              transform-code (str "import pandas as pd\n"
+                                  "import json\n"
+                                  "\n"
+                                  "def transform(" table-name "):\n"
+                                  "    df = " table-name ".copy()\n"
+                                  "    \n"
+                                  "    # JSON operations\n"
+                                  "    df['json_has_nested'] = df['json_field'].astype(str).str.contains('nested', na=False)\n"
+                                  "    df['json_length'] = df['json_field'].astype(str).str.len()\n"
+                                  "    \n"
+                                  "    # Year operations\n"
+                                  "    df['is_future_year'] = df['year_field'] > 2024\n"
+                                  "    df['year_century'] = df['year_field'] // 100\n"
+                                  "    \n"
+                                  "    # Enum/Set operations\n"
+                                  "    df['enum_size_category'] = df['enum_field'].map({'small': 1, 'medium': 2, 'large': 3})\n"
+                                  "    df['set_color_count'] = df['set_field'].astype(str).str.count(',')\n"
+                                  "    \n"
+                                  "    # Bit operations\n"
+                                  "    df['bit_is_max'] = df['bit_field'] == 255\n"
+                                  "    df['tinyint_doubled'] = df['tinyint_field'] * 2\n"
+                                  "    \n"
+                                  "    return df")
+
+              result (execute {:code transform-code
+                               :tables {table-name (mt/id qualified-table-name)}})]
+
+          (testing "MySQL exotic transform succeeded"
+            (is (some? result) "MySQL transform should succeed"))
+
+          (when result
+            (testing "MySQL exotic types processed"
+              (let [csv-data (csv/read-csv (:output result))
+                    headers (first csv-data)]
+                (is (contains? (set headers) "json_has_nested"))
+                (is (contains? (set headers) "enum_size_category"))
+                (is (contains? (set headers) "bit_is_max")))))
+
+          (cleanup-table qualified-table-name)))))
+
+  (testing "BigQuery exotic edge cases"
+    (mt/test-driver :bigquery-cloud-sdk
+      (mt/with-empty-db
+        (let [table-name "bigquery_exotic_edge_cases"
+              bq-edge-schema
+              {:columns [{:name "id" :type :type/Integer :nullable? false}
+                         ;; BigQuery specific types
+                         {:name "struct_field" :type :type/Dictionary :nullable? true :database-type "STRUCT<name STRING, age INT64, active BOOL>"}
+                         {:name "array_ints" :type :type/Array :nullable? true :database-type "ARRAY<INT64>"}
+                         {:name "array_structs" :type :type/Array :nullable? true :database-type "ARRAY<STRUCT<key STRING, value FLOAT64>>"}
+                         {:name "geography_field" :type :type/Text :nullable? true :database-type "GEOGRAPHY"}
+                         {:name "numeric_precise" :type :type/Decimal :nullable? true :database-type "NUMERIC(38,9)"}
+                         {:name "bignumeric_field" :type :type/Decimal :nullable? true :database-type "BIGNUMERIC(76,38)"}
+                         {:name "bytes_field" :type :type/Text :nullable? true :database-type "BYTES"}
+                         {:name "datetime_field" :type :type/DateTime :nullable? true :database-type "DATETIME"}
+                         {:name "time_field" :type :type/Time :nullable? true :database-type "TIME"}]
+               :data [[1 "{\"name\": \"Alice\", \"age\": 30, \"active\": true}" "[1,2,3,4,5]"
+                       "[{\"key\": \"alpha\", \"value\": 1.1}, {\"key\": \"beta\", \"value\": 2.2}]"
+                       "POINT(-122.084 37.422)" 123456789012345678901234567.123456789
+                       99999999999999999999999999999999999999.12345678901234567890123456789012345678
+                       "SGVsbG8gV29ybGQ=" "2024-12-31T23:59:59.999999" "23:59:59.999999"]
+                      [2 "{\"name\": \"Bob\", \"age\": null, \"active\": false}" "[]"
+                       "[]" "POLYGON((-124 42, -120 42, -120 46, -124 46, -124 42))"
+                       -999999999999999999999999999.999999999
+                       -12345678901234567890123456789012345678.12345678901234567890123456789012345678
+                       "VGVzdCBEYXRh" "1900-01-01T00:00:00" "00:00:00"]
+                      [3 "{\"name\": \"\", \"age\": 0, \"active\": true}" "[0]"
+                       "[{\"key\": \"\", \"value\": 0.0}]" "POINT(0 0)" 0.000000001
+                       0.00000000000000000000000000000000000001 "" "2000-01-01T12:00:00" "12:00:00"]
+                      [4 nil nil nil nil nil nil nil nil nil]]}
+
+              qualified-table-name (create-test-table-with-data
+                                    table-name
+                                    bq-edge-schema
+                                    (:data bq-edge-schema))
+
+              transform-code (str "import pandas as pd\n"
+                                  "import json\n"
+                                  "\n"
+                                  "def transform(" table-name "):\n"
+                                  "    df = " table-name ".copy()\n"
+                                  "    \n"
+                                  "    # Struct operations\n"
+                                  "    df['struct_has_name'] = df['struct_field'].astype(str).str.contains('name', na=False)\n"
+                                  "    df['struct_length'] = df['struct_field'].astype(str).str.len()\n"
+                                  "    \n"
+                                  "    # Array operations\n"
+                                  "    df['array_ints_length'] = df['array_ints'].astype(str).str.len()\n"
+                                  "    df['array_structs_complex'] = df['array_structs'].astype(str).str.contains('key', na=False)\n"
+                                  "    \n"
+                                  "    # Geography operations\n"
+                                  "    df['is_point'] = df['geography_field'].astype(str).str.contains('POINT', na=False)\n"
+                                  "    df['is_polygon'] = df['geography_field'].astype(str).str.contains('POLYGON', na=False)\n"
+                                  "    \n"
+                                  "    # High precision numeric\n"
+                                  "    df['numeric_rounded'] = df['numeric_precise'].round(2)\n"
+                                  "    df['has_large_number'] = df['bignumeric_field'].abs() > 1e30\n"
+                                  "    \n"
+                                  "    return df")
+
+              result (execute {:code transform-code
+                               :tables {table-name (mt/id qualified-table-name)}})]
+
+          (testing "BigQuery exotic transform succeeded"
+            (is (some? result) "BigQuery transform should succeed"))
+
+          (when result
+            (testing "BigQuery exotic types processed"
+              (let [csv-data (csv/read-csv (:output result))
+                    headers (first csv-data)]
+                (is (contains? (set headers) "struct_has_name"))
+                (is (contains? (set headers) "is_point"))
+                (is (contains? (set headers) "has_large_number")))))
+
+          (cleanup-table qualified-table-name)))))
+
+  (testing "Snowflake exotic edge cases"
+    (mt/test-driver :snowflake
+      (mt/with-empty-db
+        (let [table-name "snowflake_exotic_edge_cases"
+              sf-edge-schema
+              {:columns [{:name "id" :type :type/Integer :nullable? false}
+                         ;; Snowflake specific types
+                         {:name "variant_field" :type :type/JSON :nullable? true :database-type "VARIANT"}
+                         {:name "object_field" :type :type/JSON :nullable? true :database-type "OBJECT"}
+                         {:name "array_field" :type :type/Array :nullable? true :database-type "ARRAY"}
+                         {:name "geography_field" :type :type/Text :nullable? true :database-type "GEOGRAPHY"}
+                         {:name "geometry_field" :type :type/Text :nullable? true :database-type "GEOMETRY"}
+                         {:name "number_large" :type :type/Decimal :nullable? true :database-type "NUMBER(38,0)"}
+                         {:name "timestamp_ntz" :type :type/DateTime :nullable? true :database-type "TIMESTAMP_NTZ"}
+                         {:name "timestamp_ltz" :type :type/DateTimeWithTZ :nullable? true :database-type "TIMESTAMP_LTZ"}
+                         {:name "timestamp_tz" :type :type/DateTimeWithTZ :nullable? true :database-type "TIMESTAMP_TZ"}]
+               :data [[1 "{\"type\": \"variant\", \"data\": [1,2,3]}" "{\"nested\": {\"key\": \"value\"}}"
+                       "[\"apple\", \"banana\", \"cherry\"]" "POINT(-122.35 37.55)"
+                       "POLYGON((-124 42, -120 42, -120 46, -124 46, -124 42))"
+                       99999999999999999999999999999999999999
+                       "2024-12-31 23:59:59.999999999" "2024-12-31 23:59:59.999999999 +0000"
+                       "2024-12-31 23:59:59.999999999 -0800"]
+                      [2 "\"simple string\"" "{}" "[]" "LINESTRING(-122 37, -121 38)"
+                       "MULTIPOINT((-122 37), (-121 38))" -12345678901234567890123456789012345678
+                       "1900-01-01 00:00:00.000000001" "1900-01-01 00:00:00.000000001 +0000"
+                       "1900-01-01 00:00:00.000000001 +1200"]
+                      [3 "123.456" "{\"empty\": null}" "[null, \"\", 0]" "POINT(0 0)" "POINT EMPTY"
+                       0 "2000-01-01 12:00:00" "2000-01-01 12:00:00 +0000" "2000-01-01 12:00:00 +0000"]
+                      [4 nil nil nil nil nil nil nil nil nil]]}
+
+              qualified-table-name (create-test-table-with-data
+                                    table-name
+                                    sf-edge-schema
+                                    (:data sf-edge-schema))
+
+              transform-code (str "import pandas as pd\n"
+                                  "\n"
+                                  "def transform(" table-name "):\n"
+                                  "    df = " table-name ".copy()\n"
+                                  "    \n"
+                                  "    # Variant/Object operations\n"
+                                  "    df['variant_is_complex'] = df['variant_field'].astype(str).str.contains('{', na=False)\n"
+                                  "    df['object_has_nested'] = df['object_field'].astype(str).str.contains('nested', na=False)\n"
+                                  "    \n"
+                                  "    # Array operations\n"
+                                  "    df['array_has_fruits'] = df['array_field'].astype(str).str.contains('apple', na=False)\n"
+                                  "    df['array_length'] = df['array_field'].astype(str).str.len()\n"
+                                  "    \n"
+                                  "    # Geography operations\n"
+                                  "    df['is_point_geo'] = df['geography_field'].astype(str).str.startswith('POINT', na=False)\n"
+                                  "    df['is_complex_geom'] = df['geometry_field'].astype(str).str.contains('POLYGON|MULTI', na=False)\n"
+                                  "    \n"
+                                  "    # Large number operations\n"
+                                  "    df['number_abs'] = df['number_large'].abs()\n"
+                                  "    df['is_huge_number'] = df['number_large'].abs() > 1e30\n"
+                                  "    \n"
+                                  "    return df")
+
+              result (execute {:code transform-code
+                               :tables {table-name (mt/id qualified-table-name)}})]
+
+          (testing "Snowflake exotic transform succeeded"
+            (is (some? result) "Snowflake transform should succeed"))
+
+          (when result
+            (testing "Snowflake exotic types processed"
+              (let [csv-data (csv/read-csv (:output result))
+                    headers (first csv-data)]
+                (is (contains? (set headers) "variant_is_complex"))
+                (is (contains? (set headers) "is_point_geo"))
+                (is (contains? (set headers) "is_huge_number")))))
+
+          (cleanup-table qualified-table-name)))))
+
+  (testing "ClickHouse exotic edge cases"
+    (mt/test-driver :clickhouse
+      (mt/with-empty-db
+        (let [table-name "clickhouse_exotic_edge_cases"
+              ch-edge-schema
+              {:columns [{:name "id" :type :type/Integer :nullable? false}
+                         ;; ClickHouse specific types
+                         {:name "array_field" :type :type/Array :nullable? true :database-type "Array(Int64)"}
+                         {:name "tuple_field" :type :type/Text :nullable? true :database-type "Tuple(String, Int64, Float64)"}
+                         {:name "map_field" :type :type/Dictionary :nullable? true :database-type "Map(String, Int64)"}
+                         {:name "uuid_field" :type :type/UUID :nullable? true :database-type "UUID"}
+                         {:name "ipv4_field" :type :type/IPAddress :nullable? true :database-type "IPv4"}
+                         {:name "ipv6_field" :type :type/IPAddress :nullable? true :database-type "IPv6"}
+                         {:name "decimal128" :type :type/Decimal :nullable? true :database-type "Decimal128(18)"}
+                         {:name "fixedstring" :type :type/Text :nullable? true :database-type "FixedString(10)"}
+                         {:name "enum8_field" :type :type/Text :nullable? true :database-type "Enum8('small'=1,'medium'=2,'large'=3)"}]
+               :data [[1 "[1,2,3,4,5]" "('test', 42, 3.14)" "{'key1': 100, 'key2': 200}"
+                       "550e8400-e29b-41d4-a716-446655440000" "192.168.1.1" "2001:db8::1"
+                       123456789012345678 "fixed_text" "medium"]
+                      [2 "[-1,0,1]" "('', 0, -1.5)" "{'empty': 0}"
+                       "00000000-0000-0000-0000-000000000000" "10.0.0.1" "::1"
+                       -999999999999999999 "short     " "small"]
+                      [3 "[]" "('null', -1, 0.0)" "{}"
+                       "ffffffff-ffff-ffff-ffff-ffffffffffff" "255.255.255.255" "ffff::ffff"
+                       0 "          " "large"]
+                      [4 nil nil nil nil nil nil nil nil nil]]}
+
+              qualified-table-name (create-test-table-with-data
+                                    table-name
+                                    ch-edge-schema
+                                    (:data ch-edge-schema))
+
+              transform-code (str "import pandas as pd\n"
+                                  "\n"
+                                  "def transform(" table-name "):\n"
+                                  "    df = " table-name ".copy()\n"
+                                  "    \n"
+                                  "    # Array operations\n"
+                                  "    df['array_has_positive'] = df['array_field'].astype(str).str.contains('[1-9]', na=False)\n"
+                                  "    df['array_length'] = df['array_field'].astype(str).str.len()\n"
+                                  "    \n"
+                                  "    # Tuple operations\n"
+                                  "    df['tuple_has_string'] = df['tuple_field'].astype(str).str.contains(\"'\", na=False)\n"
+                                  "    df['tuple_has_negative'] = df['tuple_field'].astype(str).str.contains('-', na=False)\n"
+                                  "    \n"
+                                  "    # Map operations\n"
+                                  "    df['map_has_keys'] = df['map_field'].astype(str).str.contains('key', na=False)\n"
+                                  "    df['map_is_empty'] = df['map_field'] == '{}'\n"
+                                  "    \n"
+                                  "    # IP operations\n"
+                                  "    df['ipv4_is_private'] = df['ipv4_field'].astype(str).str.contains('192.168|10.', na=False)\n"
+                                  "    df['ipv6_is_loopback'] = df['ipv6_field'].astype(str).str.contains('::1', na=False)\n"
+                                  "    \n"
+                                  "    # UUID operations\n"
+                                  "    df['uuid_is_null'] = df['uuid_field'].astype(str).str.startswith('00000000', na=False)\n"
+                                  "    \n"
+                                  "    return df")
+
+              result (execute {:code transform-code
+                               :tables {table-name (mt/id qualified-table-name)}})]
+
+          (testing "ClickHouse exotic transform succeeded"
+            (is (some? result) "ClickHouse transform should succeed"))
+
+          (when result
+            (testing "ClickHouse exotic types processed"
+              (let [csv-data (csv/read-csv (:output result))
+                    headers (first csv-data)]
+                (is (contains? (set headers) "array_has_positive"))
+                (is (contains? (set headers) "ipv4_is_private"))
+                (is (contains? (set headers) "uuid_is_null")))))
+
           (cleanup-table qualified-table-name))))))
 
 (deftest large-values-python-transform-test
