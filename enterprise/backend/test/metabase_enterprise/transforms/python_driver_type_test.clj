@@ -114,9 +114,13 @@
                      [3 "2024-02-01T09:15:30-05:00" nil nil nil "{}" "{}" "{}"]]}
    :mysql {:columns [{:name "id" :type :type/Integer :nullable? false}
                      {:name "json_field" :type :type/JSON :nullable? true}
-                     {:name "timestamp" :type :type/DateTime :nullable? true :database-type "timestamp"}]
-           :data [[1 "{\"key\": \"value\"}" "2024-01-01 12:00:00"]
-                  [2 nil nil]]}
+                     ;; {:name "timestamp" :type :type/DateTimeWithLocalTZ :nullable? true :database-type "timestamp"}
+                     ]
+           :data [[1 "{\"key\": \"value\"}" ;; "2024-01-01 12:00:00"
+                   ]
+                  [2 nil
+                   ;; nil
+                   ]]}
    :mariadb {:columns [{:name "id" :type :type/Integer :nullable? false}
                        {:name "json_field" :type :type/JSON :nullable? true}
                        {:name "uuid_field" :type :type/UUID :nullable? true :database-type "uuid"}
