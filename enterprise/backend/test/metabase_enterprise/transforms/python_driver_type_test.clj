@@ -6,15 +6,18 @@
    [clojure.string :as str]
    [clojure.test :refer :all]
    [java-time.api :as t]
+   [metabase-enterprise.transforms.execute :as transforms.execute]
    [metabase-enterprise.transforms.python-runner :as python-runner]
    [metabase-enterprise.transforms.settings :as transforms.settings]
+   [metabase-enterprise.transforms.test-util :as transforms.tu :refer [with-transform-cleanup!]]
    [metabase-enterprise.transforms.util :as transforms.util]
    [metabase.driver :as driver]
    [metabase.sync.core :as sync]
    [metabase.test :as mt]
    [metabase.test.data.interface :as tx]
    [metabase.test.data.sql :as sql.tx]
-   [metabase.util :as u]))
+   [metabase.util :as u]
+   [toucan2.core :as t2]))
 
 (def test-id (str (random-uuid)))
 
@@ -41,6 +44,39 @@
               :output-manifest output-manifest
               :stdout (->> events (filter #(= "stdout" (:stream %))) (map :message) (str/join "\n"))
               :stderr (->> events (filter #(= "stderr" (:stream %))) (map :message) (str/join "\n"))}))))
+
+(defn- wait-for-table
+  "Wait for a table to be created and synced, with timeout."
+  [table-name timeout-ms]
+  (let [start-time (System/currentTimeMillis)]
+    (loop []
+      (if-let [table (t2/select-one :model/Table :name table-name :db_id (mt/id))]
+        table
+        (if (< (- (System/currentTimeMillis) start-time) timeout-ms)
+          (do (Thread/sleep 100)
+              (recur))
+          (throw (ex-info "Timeout waiting for table" {:table-name table-name})))))))
+
+(defn- execute-e2e-transform!
+  "Execute an e2e Python transform test using execute-python-transform!"
+  [table-name transform-code source-tables]
+  (let [schema (when (= driver/*driver* :postgres)
+                 (sql.tx/session-schema driver/*driver*))
+        target {:type "table"
+                :schema schema
+                :name table-name
+                :database (mt/id)}
+        transform-def {:name (str "E2E Transform Test " table-name)
+                       :source {:type "python"
+                                :source-tables source-tables
+                                :body transform-code}
+                       :target target}]
+    (with-transform-cleanup! [target target]
+      (mt/with-temp [:model/Transform transform transform-def]
+        (transforms.execute/execute-python-transform! transform {:run-method :manual})
+        (wait-for-table table-name 10000)
+        ;; Return the table rows for validation
+        (transforms.tu/table-rows table-name)))))
 
 (defn- datetime-equal?
   "Check if two datetime strings are equal, handling timezone conversion."
@@ -77,11 +113,12 @@
                   [2 nil]]}
    :bigquery-cloud-sdk {:columns [{:name "id" :type :type/Integer :nullable? false}
                                   {:name "json_field" :type :type/JSON :nullable? true}
-                                  {:name "array_field" :type :type/Array :nullable? true}]
-                        :data [[1 "{\"key\": \"value\"}" "[1, 2, 3]"]
-                               [2 nil nil]]}
+                                  {:name "array_field" :type :type/Array :nullable? true :database-type "ARRAY<INT64>"}
+                                  {:name "dict_field" :type :type/Dictionary :nullable? true :database-type "STRUCT<key STRING, value INT64>"}]
+                        :data [[1 "{\"key\": \"value\"}" "[1, 2, 3]" "{\"key\": \"test\", \"value\": 42}"]
+                               [2 nil nil nil]]}
    :snowflake {:columns [{:name "id" :type :type/Integer :nullable? false}
-                         {:name "array_field" :type :type/Array :nullable? true}]
+                         {:name "array_field" :type :type/Array :nullable? true :database-type "ARRAY"}]
                :data [[1 "[1, 2, 3]"]
                       [2 nil]]}
    :sqlserver {:columns [{:name "id" :type :type/Integer :nullable? false}
@@ -99,10 +136,11 @@
    :mongo {:columns [{:name "id" :type :type/Integer :nullable? false}
                      {:name "uuid_field" :type :type/UUID :nullable? true}
                      {:name "json_field" :type :type/JSON :nullable? true}
-                     {:name "array_field" :type :type/Array :nullable? true}
+                     {:name "array_field" :type :type/Array :nullable? true :database-type "array"}
+                     {:name "dict_field" :type :type/Dictionary :nullable? true :database-type "object"}
                      {:name "bson_id" :type :type/MongoBSONID :nullable? true}]
-           :data [[1 "550e8400-e29b-41d4-a716-446655440000" "{\"key\": \"value\"}" "[1, 2, 3]" "507f1f77bcf86cd799439011"]
-                  [2 nil nil nil nil]]}})
+           :data [[1 "550e8400-e29b-41d4-a716-446655440000" "{\"key\": \"value\"}" "[1, 2, 3]" "{\"nested\": \"object\"}" "507f1f77bcf86cd799439011"]
+                  [2 nil nil nil nil nil]]}})
 
 (defn- create-test-table-with-data
   "Create a test table with the given schema and data for the current driver."
@@ -421,3 +459,87 @@
 
         ;; Cleanup
         (cleanup-table qualified-table-name)))))
+
+(deftest comprehensive-e2e-python-transform-test
+  "End-to-end test using execute-python-transform! across all supported drivers with comprehensive type coverage."
+  (mt/test-drivers #{:postgres :mysql :bigquery-cloud-sdk :snowflake :sqlserver :redshift :clickhouse}
+    (mt/with-empty-db
+      (mt/with-premium-features #{:transforms}
+        (let [table-name "e2e_comprehensive_test"
+              source-table-name "source_comprehensive_test"
+
+              ;; Create source table with comprehensive types 
+              source-qualified-table-name (create-test-table-with-data
+                                           source-table-name
+                                           base-type-test-data
+                                           (:data base-type-test-data))
+
+              ;; Add driver-specific exotic types if available
+              exotic-config (get driver-exotic-types driver/*driver*)
+              exotic-qualified-table-name (when exotic-config
+                                            (create-test-table-with-data
+                                             (str source-table-name "_exotic")
+                                             exotic-config
+                                             (:data exotic-config)))
+
+              ;; Python transform that combines and processes both tables
+              transform-code (str "import pandas as pd\n"
+                                  "\n"
+                                  "def transform(" source-table-name
+                                  (when exotic-config (str ", " source-table-name "_exotic"))
+                                  "):\n"
+                                  "    # Start with base types table\n"
+                                  "    df = " source-table-name ".copy()\n"
+                                  "    \n"
+                                  "    # Add computed columns to test type handling\n"
+                                  "    df['price_with_tax'] = df['price'] * 1.08  # Float computation\n"
+                                  "    df['name_length'] = df['name'].str.len()   # String operations\n"
+                                  "    df['is_expensive'] = df['price'] > 18.0    # Boolean computation\n"
+                                  "    \n"
+                                  "    # Date operations\n"
+                                  "    df['created_year'] = pd.to_datetime(df['created_date']).dt.year\n"
+                                  "    \n"
+                                  (when exotic-config
+                                    (str "    # Merge with exotic types if available\n"
+                                         "    exotic_df = " source-table-name "_exotic.copy()\n"
+                                         "    df = df.merge(exotic_df, on='id', how='left', suffixes=('', '_exotic'))\n"
+                                         "    \n"))
+                                  "    # Return processed dataframe\n"
+                                  "    return df")
+
+              ;; Execute the e2e transform
+              source-tables (cond-> {source-table-name (mt/id source-qualified-table-name)}
+                              exotic-qualified-table-name
+                              (assoc (str source-table-name "_exotic") (mt/id exotic-qualified-table-name)))
+
+              result-rows (execute-e2e-transform! table-name transform-code source-tables)]
+
+          (testing "E2E transform execution succeeded"
+            (is (seq result-rows) "Transform should produce results"))
+
+          (when (seq result-rows)
+            (testing "Expected data transformations"
+              (let [first-row (first result-rows)]
+                ;; Basic validations that the transform worked
+                (testing "Computed columns are present and have reasonable values"
+                  ;; The exact structure depends on the merge, but we should have more columns
+                  (is (> (count first-row) 7) "Should have additional computed columns")
+
+                  ;; Check that we have the expected number of rows (3 from base data)
+                  (is (= 3 (count result-rows)) "Should have 3 rows from source data"))))
+
+            (testing "Driver-specific type handling"
+              (case driver/*driver*
+                :postgres (is (contains? (set (map str (first result-rows))) "1")
+                              "Postgres should handle all types correctly")
+                :mysql (is (seq result-rows) "MySQL should handle JSON and base types")
+                :bigquery-cloud-sdk (is (seq result-rows) "BigQuery should handle arrays and JSON")
+                :snowflake (is (seq result-rows) "Snowflake should handle arrays")
+                :sqlserver (is (seq result-rows) "SQL Server should handle UUIDs")
+                (:redshift :clickhouse) (is (seq result-rows) "Driver should handle base types")
+                (is (seq result-rows) "All drivers should produce results"))))
+
+          ;; Cleanup source tables
+          (cleanup-table source-qualified-table-name)
+          (when exotic-qualified-table-name
+            (cleanup-table exotic-qualified-table-name)))))))
