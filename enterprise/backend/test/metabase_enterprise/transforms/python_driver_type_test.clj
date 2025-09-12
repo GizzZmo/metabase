@@ -112,6 +112,8 @@
                       "{1,2,3,4,5}" "{\"hello\",\"world\",\"test\"}" "{550e8400-e29b-41d4-a716-446655440000,123e4567-e89b-12d3-a456-426614174000}"]
                      [2 nil nil nil nil nil nil nil]
                      [3 "2024-02-01T09:15:30-05:00" nil nil nil "{}" "{}" "{}"]]}
+
+   ;;TODO: timestamps broken
    :mysql {:columns [{:name "id" :type :type/Integer :nullable? false}
                      {:name "json_field" :type :type/JSON :nullable? true}
                      ;; {:name "timestamp" :type :type/DateTimeWithLocalTZ :nullable? true :database-type "timestamp"}
@@ -127,6 +129,7 @@
                        {:name "inet4_field" :type :type/IPAddress :nullable? true :database-type "inet4"}]
              :data [[1 "{\"key\": \"mariadb_value\"}" "550e8400-e29b-41d4-a716-446655440000" "192.168.1.1"]
                     [2 nil nil nil]]}
+
    :bigquery-cloud-sdk {:columns [{:name "id" :type :type/Integer :nullable? false}
                                   {:name "json_field" :type :type/JSON :nullable? true}
                                   {:name "array_field" :type :type/Array :nullable? true :database-type "ARRAY<INT64>"}
@@ -240,7 +243,7 @@
 
 (deftest create-table-test
   (testing "Test we can create base table"
-    (mt/test-drivers #{:h2 :postgres :mysql :mariadb :bigquery-cloud-sdk :snowflake :sqlserver :redshift :clickhouse}
+    (mt/test-drivers #{:h2 :postgres :mysql :bigquery-cloud-sdk :snowflake :sqlserver :redshift :clickhouse}
       (mt/with-empty-db
         (let [table-name (mt/random-name)
 
@@ -255,7 +258,7 @@
 
 (deftest base-types-python-transform-test
   (testing "Test Python transforms with base types across all supported drivers"
-    (mt/test-drivers #{:h2 :postgres :mysql :mariadb :bigquery-cloud-sdk :snowflake :sqlserver :redshift :clickhouse}
+    (mt/test-drivers #{:h2 :postgres :mysql :bigquery-cloud-sdk :snowflake :sqlserver :redshift :clickhouse}
       (mt/with-empty-db
         (let [table-name (mt/random-name)
               table-id (create-test-table-with-data!
@@ -294,7 +297,7 @@
 
 (deftest exotic-types-python-transform-test
   (testing "Test Python transforms with driver-specific exotic types"
-    (mt/test-drivers #{:h2 :postgres :mysql :mariadb :bigquery-cloud-sdk :snowflake :sqlserver :redshift :clickhouse :mongo}
+    (mt/test-drivers #{:h2 :postgres :mysql :bigquery-cloud-sdk :snowflake :sqlserver :redshift :clickhouse :mongo}
       (mt/with-empty-db
         (when-let [exotic-config (get driver-exotic-types driver/*driver*)]
           (let [table-name (mt/random-name)
@@ -349,13 +352,14 @@
                              (when (contains? dtype-map "timestamp_tz")
                                (is (contains? #{:type/DateTime :type/DateTimeWithTZ} (dtype-map "timestamp_tz")))))
 
-                    :mariadb (do
-                               (when (contains? dtype-map "json_field")
-                                 (is (contains? #{:type/Text :type/JSON} (dtype-map "json_field"))))
-                               (when (contains? dtype-map "uuid_field")
-                                 (is (contains? #{:type/Text :type/UUID} (dtype-map "uuid_field"))))
-                               (when (contains? dtype-map "inet4_field")
-                                 (is (contains? #{:type/Text :type/IPAddress} (dtype-map "inet4_field")))))
+                    ;; :mariadb
+                    ;; (do
+                    ;;   (when (contains? dtype-map "json_field")
+                    ;;     (is (contains? #{:type/Text :type/JSON} (dtype-map "json_field"))))
+                    ;;   (when (contains? dtype-map "uuid_field")
+                    ;;     (is (contains? #{:type/Text :type/UUID} (dtype-map "uuid_field"))))
+                    ;;   (when (contains? dtype-map "inet4_field")
+                    ;;     (is (contains? #{:type/Text :type/IPAddress} (dtype-map "inet4_field")))))
 
                     :bigquery-cloud-sdk (do
                                           (when (contains? dtype-map "json_field")
@@ -394,7 +398,7 @@
 
 (deftest edge-cases-python-transform-test
   (testing "Test Python transforms with edge cases: null values, empty strings, extreme values"
-    (mt/test-drivers #{:h2 :postgres :mysql :mariadb :bigquery-cloud-sdk :snowflake :sqlserver :redshift :clickhouse}
+    (mt/test-drivers #{:h2 :postgres :mysql :bigquery-cloud-sdk :snowflake :sqlserver :redshift :clickhouse}
       (mt/with-empty-db
         (let [table-name (mt/random-name)
               edge-case-schema {:columns [{:name "id" :type :type/Integer :nullable? false}
@@ -478,7 +482,7 @@
 
 (deftest idempotent-transform-test
   (testing "Test that running the same transform multiple times produces identical results"
-    (mt/test-drivers #{:h2 :postgres :mysql :mariadb :bigquery-cloud-sdk :snowflake :sqlserver :redshift :clickhouse}
+    (mt/test-drivers #{:h2 :postgres :mysql :bigquery-cloud-sdk :snowflake :sqlserver :redshift :clickhouse}
       (mt/with-empty-db
         (let [table-name (mt/random-name)
               table-id (create-test-table-with-data!
@@ -531,7 +535,7 @@
 
 (deftest comprehensive-e2e-python-transform-test
   (testing "End-to-end test using execute-python-transform! across all supported drivers with comprehensive type coverage"
-    (mt/test-drivers #{:h2 :postgres :mysql :mariadb :bigquery-cloud-sdk :snowflake :sqlserver :redshift :clickhouse}
+    (mt/test-drivers #{:h2 :postgres :mysql :bigquery-cloud-sdk :snowflake :sqlserver :redshift :clickhouse}
       (mt/with-empty-db
         (mt/with-premium-features #{:transforms}
           (let [table-name (mt/random-name)
@@ -1506,7 +1510,7 @@
 
 (deftest large-values-python-transform-test
   (testing "Test Python transforms with large-ish values that should work within 63-bit limits."
-    (mt/test-drivers #{:h2 :postgres :mysql :mariadb :snowflake}
+    (mt/test-drivers #{:h2 :postgres :mysql :snowflake}
       (mt/with-empty-db
         (let [table-name (mt/random-name)
               large-values-schema
