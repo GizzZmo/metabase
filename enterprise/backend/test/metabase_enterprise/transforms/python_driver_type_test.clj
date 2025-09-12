@@ -2,7 +2,6 @@
   "Comprehensive tests for Python transforms across all supported drivers with all base and exotic types."
   (:require
    [clojure.core.async :as a]
-   [clojure.data.csv :as csv]
    [clojure.string :as str]
    [clojure.test :refer :all]
    [java-time.api :as t]
@@ -17,6 +16,7 @@
    [metabase.test.data.interface :as tx]
    [metabase.test.data.sql :as sql.tx]
    [metabase.util :as u]
+   [metabase.util.json :as json]
    [toucan2.core :as t2]))
 
 (def test-id 42)
@@ -185,7 +185,8 @@
       nil)))
 
 (defn- validate-transform-output
-  "Validate that the Python transform output preserves types and data correctly."
+  "Validate that the Python transform output preserves types and data correctly,
+   assuming output is in JSONL format."
   [result expected-columns expected-row-count]
   (testing "Transform execution succeeded"
     (is (some? result))
@@ -193,10 +194,10 @@
     (is (contains? result :output-manifest)))
 
   (when result
-    (let [csv-data (csv/read-csv (:output result))
-          headers (first csv-data)
-          rows (rest csv-data)
-          metadata (:output-manifest result)]
+    (let [lines (str/split-lines (:output result))
+          rows (map json/decode lines)
+          metadata (:output-manifest result)
+          headers (map :name (:fields metadata))]
 
       (testing "Column headers are correct"
         (is (= (set expected-columns) (set headers))))
@@ -405,9 +406,7 @@
             validation (validate-transform-output result expected-columns 3)]
 
         (when validation
-          (let [{:keys [rows headers metadata]} validation
-                get-col (fn [row col-name]
-                          (nth row (.indexOf headers col-name)))
+          (let [{:keys [rows metadata]} validation
                 dtype-map (u/for-map [{:keys [name dtype]} (:fields metadata)]
                             [name (transforms.util/dtype->base-type dtype)])]
 
@@ -428,16 +427,16 @@
             (testing "Edge case data handling"
               (let [[row1 row2 row3] rows]
                 ;; Row 1: minimal values
-                (is (= "1" (get-col row1 "id")))
-                (is (= "0" (get-col row1 "text_length"))) ; empty string length
-                (is (= "0" (get-col row1 "int_doubled"))) ; 0 * 2
+                (is (= 1 (get row1 "id")))
+                (is (= 0 (get row1 "text_length"))) ; empty string length
+                (is (= 0 (get row1 "int_doubled"))) ; 0 * 2
 
                 ;; Row 2: maximum values
-                (is (= "2" (get-col row2 "id")))
-                (is (not= "" (get-col row2 "text_length"))) ; long string has length
+                (is (= 2 (get row2 "id")))
+                (is (not= "" (get row2 "text_length"))) ; long string has length
 
                 ;; Row 3: null values
-                (is (= "3" (get-col row3 "id")))))))
+                (is (= 3 (get row3 "id")))))))
 
         ;; Cleanup
         (cleanup-table table-id)))))
