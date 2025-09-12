@@ -386,7 +386,7 @@
                                 "    df = " table-name ".copy()\n"
                                 "    \n"
                                 "    # Handle text operations safely\n"
-                                "    df['text_length'] = df['text_field'].astype(str).str.len()\n"
+                                "    df['text_length'] = df['text_field'].fillna(\"\").astype(str).str.len()"
                                 "    \n"
                                 "    # Handle numeric operations with null safety\n"
                                 "    df['int_doubled'] = df['int_field'] * 2\n"
@@ -510,11 +510,11 @@
 
               ;; Add driver-specific exotic types if available
               exotic-config (get driver-exotic-types driver/*driver*)
-              exotic-qualified-table-name (when exotic-config
-                                            (create-test-table-with-data
-                                             (str source-table-name "_exotic")
-                                             exotic-config
-                                             (:data exotic-config)))
+              exotic-table-id (when exotic-config
+                                (create-test-table-with-data
+                                 (str source-table-name "_exotic")
+                                 exotic-config
+                                 (:data exotic-config)))
 
               ;; Python transform that combines and processes both tables
               transform-code (str "import pandas as pd\n"
@@ -543,8 +543,8 @@
 
               ;; Execute the e2e transform
               source-tables (cond-> {source-table-name source-table-id}
-                              exotic-qualified-table-name
-                              (assoc (str source-table-name "_exotic") (t2/select-one-pk :model/Table :name (name exotic-qualified-table-name) :db_id (mt/id))))
+                              exotic-table-id
+                              (assoc (str source-table-name "_exotic") exotic-table-id))
 
               result-rows (execute-e2e-transform! table-name transform-code source-tables)]
 
@@ -575,8 +575,8 @@
 
           ;; Cleanup source tables
           (cleanup-table source-table-id)
-          (when exotic-qualified-table-name
-            (cleanup-table exotic-qualified-table-name)))))))
+          (when exotic-table-id
+            (cleanup-table exotic-table-id)))))))
 
 (deftest exotic-edge-cases-python-transform-test
   "Test Python transforms with very exotic types and edge case values that should work transparently."
@@ -660,16 +660,16 @@
             (is (contains? result :output-manifest) "Should have output manifest"))
 
           (when result
-            (let [csv-data (csv/read-csv (:output result))
-                  headers (first csv-data)
-                  rows (rest csv-data)
-                  metadata (:output-manifest result)]
+            (let [lines (str/split-lines (:output result))
+                  rows (map json/decode lines)
+                  metadata (:output-manifest result)
+                  headers (map :name (:fields metadata))]
 
               (testing "Exotic data processed correctly"
                 (is (= 4 (count rows)) "Should have 4 rows")
                 (is (> (count headers) 13) "Should have computed columns")
 
-                ;; Check some computed columns exist
+      ;; Check some computed columns exist
                 (is (contains? (set headers) "has_ipv6") "Should have IPv6 detection")
                 (is (contains? (set headers) "money_doubled") "Should have money calculations")
                 (is (contains? (set headers) "has_coords") "Should have geometric operations"))
@@ -677,11 +677,11 @@
               (testing "Type preservation for exotic types"
                 (let [dtype-map (u/for-map [{:keys [name dtype]} (:fields metadata)]
                                   [name (transforms.util/dtype->base-type dtype)])]
-                  ;; Original exotic types should be preserved as text or appropriate types
+        ;; Original exotic types should be preserved as text or appropriate types
                   (is (contains? #{:type/Text :type/IPAddress} (dtype-map "inet_field")))
                   (is (contains? #{:type/Decimal :type/Float} (dtype-map "money_field")))
                   (is (contains? #{:type/Text :type/Array} (dtype-map "int_array")))
-                  ;; Computed columns should have expected types
+        ;; Computed columns should have expected types
                   (is (= :type/Boolean (dtype-map "has_ipv6")))
                   (is (contains? #{:type/Decimal :type/Float} (dtype-map "money_doubled")))))))
 
