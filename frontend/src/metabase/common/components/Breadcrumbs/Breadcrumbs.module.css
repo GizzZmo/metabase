@@ -13,6 +13,14 @@
   color: var(--breadcrumbs-color);
 }
 
+.breadcrumbList {
+  display: flex;
+  align-items: center;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
 .breadcrumb {
   font-size: 0.75rem;
   font-weight: bold;
