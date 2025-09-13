@@ -1,6 +1,4 @@
-/* eslint "react/prop-types": "warn" */
 import cx from "classnames";
-import PropTypes from "prop-types";
 import { memo } from "react";
 
 import Card from "metabase/common/components/Card";
@@ -11,6 +9,22 @@ import { Icon } from "metabase/ui";
 
 import { ListItemLink, Root } from "./ListItem.styled";
 
+interface ListItemProps {
+  "data-testid"?: string;
+  /** The display name of the list item */
+  name: string;
+  /** The URL to navigate to when the item is clicked */
+  url?: string;
+  /** Optional description text to display below the name */
+  description?: string;
+  /** Whether the item should be disabled (non-interactive) */
+  disabled?: boolean;
+  /** Placeholder text to show when no description is provided */
+  placeholder?: string;
+  /** Optional icon name to display next to the item */
+  icon?: string;
+}
+
 const ListItem = ({
   "data-testid": dataTestId,
   name,
@@ -19,7 +33,7 @@ const ListItem = ({
   disabled,
   placeholder,
   icon,
-}) => {
+}: ListItemProps) => {
   const card = (
     <Card
       hoverable
@@ -58,16 +72,6 @@ const ListItem = ({
       <ListItemLink to={url}>{card}</ListItemLink>
     </Root>
   );
-};
-
-ListItem.propTypes = {
-  "data-testid": PropTypes.string,
-  name: PropTypes.string.isRequired,
-  url: PropTypes.string,
-  description: PropTypes.string,
-  disabled: PropTypes.bool,
-  placeholder: PropTypes.string,
-  icon: PropTypes.string,
 };
 
 export default memo(ListItem);
