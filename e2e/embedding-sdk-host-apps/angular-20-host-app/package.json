@@ -8,9 +8,9 @@
   },
   "private": true,
   "dependencies": {
-    "@angular/common": "^20.0.0",
-    "@angular/compiler": "^20.0.0",
-    "@angular/core": "^20.0.0",
+    "@angular/common": "^20.3.14",
+    "@angular/compiler": "^20.3.16",
+    "@angular/core": "^21.1.5",
     "@angular/platform-browser": "^20.0.0",
     "@angular/router": "^20.0.0",
     "react": "^18.3.1",
@@ -18,7 +18,7 @@
   },
   "devDependencies": {
     "@angular-devkit/build-angular": "^20.0.0",
-    "@angular/cli": "^20.0.0",
+    "@angular/cli": "^20.3.16",
     "@angular/compiler-cli": "^20.0.0",
     "@ngx-env/builder": "19.0.4",
     "@types/react": "^18.2.79",
